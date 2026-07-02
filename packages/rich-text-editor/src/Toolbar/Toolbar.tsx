@@ -81,6 +81,7 @@ export function Toolbar({
   const [colorOpen, setColorOpen] = useState(false);
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [linkOpen, setLinkOpen] = useState(false);
+  const [tableOpen, setTableOpen] = useState(false);
 
   // Optimistic local state so the font label / alignment highlight update the moment the user
   // picks an option. Falls back to the (optional) props, which a consumer can drive from
@@ -168,6 +169,7 @@ export function Toolbar({
         <ToolbarButton label="⇤|" active={false} accessibilityLabel="outdent" onPress={() => editorRef.current?.adjustIndent(-1)} />
         <ToolbarButton label="|⇥" active={false} accessibilityLabel="indent" onPress={() => editorRef.current?.adjustIndent(1)} />
         <ToolbarButton label="😊" active={false} accessibilityLabel="emoji" onPress={() => setEmojiOpen(true)} />
+        <ToolbarButton label="▦" active={false} accessibilityLabel="table" onPress={() => setTableOpen(true)} />
 
         <Divider />
 
@@ -242,6 +244,16 @@ export function Toolbar({
         </View>
       </Popover>
 
+      {/* Table size picker */}
+      <Popover visible={tableOpen} onClose={() => setTableOpen(false)}>
+        <TableSizePicker
+          onPick={(rows, cols) => {
+            editorRef.current?.insertTable(rows, cols);
+            setTableOpen(false);
+          }}
+        />
+      </Popover>
+
       {/* Link URL input */}
       <UrlInput
         visible={linkOpen}
@@ -303,6 +315,38 @@ function UrlInput({
         </Pressable>
       </Pressable>
     </Modal>
+  );
+}
+
+/** A grid selector (like Docs/Word) for choosing a table's dimensions before inserting. */
+function TableSizePicker({ onPick }: { onPick: (rows: number, cols: number) => void }) {
+  const MAX = 5;
+  const [hover, setHover] = useState({ rows: 0, cols: 0 });
+  return (
+    <View style={styles.tablePicker}>
+      <Text style={styles.tablePickerLabel}>
+        {hover.rows > 0 ? `${hover.rows} × ${hover.cols}` : 'Insert table'}
+      </Text>
+      <View>
+        {Array.from({ length: MAX }, (_r, r) => (
+          <View key={r} style={styles.tableRow}>
+            {Array.from({ length: MAX }, (_c, c) => {
+              const on = r < hover.rows && c < hover.cols;
+              return (
+                <TouchableOpacity
+                  key={c}
+                  accessibilityRole="button"
+                  accessibilityLabel={`table-${r + 1}x${c + 1}`}
+                  style={[styles.tableCell, on && styles.tableCellOn]}
+                  onPressIn={() => setHover({ rows: r + 1, cols: c + 1 })}
+                  onPress={() => onPick(r + 1, c + 1)}
+                />
+              );
+            })}
+          </View>
+        ))}
+      </View>
+    </View>
   );
 }
 
@@ -419,6 +463,19 @@ const styles = StyleSheet.create({
   emojiGrid: { flexDirection: 'row', flexWrap: 'wrap', width: 220, padding: 8 },
   emojiCell: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
   emoji: { fontSize: 22 },
+  tablePicker: { padding: 10 },
+  tablePickerLabel: { fontSize: 13, color: '#333', marginBottom: 8, textAlign: 'center' },
+  tableRow: { flexDirection: 'row' },
+  tableCell: {
+    width: 24,
+    height: 24,
+    margin: 2,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: '#aaa',
+    borderRadius: 3,
+    backgroundColor: '#fff',
+  },
+  tableCellOn: { backgroundColor: '#DCEEFF', borderColor: '#1A73E8' },
   inputCard: {
     position: 'absolute',
     top: 120,

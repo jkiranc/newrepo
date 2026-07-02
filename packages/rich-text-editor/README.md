@@ -51,8 +51,10 @@ function Editor() {
 ### Imperative ref (`RichTextEditorRef`)
 
 `focus` · `blur` · `getHTML` · `setHTML` · `toggleBold` · `toggleItalic` ·
-`toggleUnderline` · `toggleStrikethrough` · `toggleInlineStyle` · `setBlockType` ·
-`insertEmbed`.
+`toggleUnderline` · `toggleStrikethrough` · `toggleInlineStyle` (adds
+`superscript`/`subscript`) · `setBlockType` · `setAlignment` · `setTextColor` ·
+`setLink` · `adjustIndent` · `toggleList` (`bullet`/`ordered`/`check`) ·
+`insertText` · `insertImage` · `insertTable` · `insertEmbed` · `undo` · `redo`.
 
 ## Registering a custom tag
 
@@ -81,8 +83,10 @@ serialization. See `src/registry/builtInTags.ts` for the built-in definitions.
 
 ## Built-in tags
 
-`b`/`strong`, `i`/`em`, `u`, `s`/`strike`/`del`, `code`, `a`, `span[style]`, `p`/`div`,
-`h1`–`h6`, `blockquote`, `pre`, `li`, `ul`/`ol`, `img`, `br`.
+`b`/`strong`, `i`/`em`, `u`, `s`/`strike`/`del`, `sup`, `sub`, `code`, `a`,
+`span[style]`, `p`/`div`, `h1`–`h6`, `blockquote`, `pre`, `li`, `ul`/`ol`
+(including `<li data-checked>` checklists), `img`, `br`, and read-only `table`
+(rows/cells flattened to text; the first `th` row renders as a header).
 
 ## Development
 

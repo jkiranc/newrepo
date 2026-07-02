@@ -84,7 +84,7 @@ export interface EmbedPlaceholder {
   offset: number;
   /** Originating tag, e.g. `"img"` or a custom `"mention"`. */
   tag: string;
-  kind: 'image' | 'chip';
+  kind: 'image' | 'chip' | 'table';
   width?: number;
   height?: number;
   /** For `kind: 'image'`. */

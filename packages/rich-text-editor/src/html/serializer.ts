@@ -1,8 +1,9 @@
-import type {
-  BlockNode,
-  EmbedPlaceholder,
-  RichTextDocument,
-  StyleRun,
+import {
+  OBJECT_REPLACEMENT_CHAR,
+  type BlockNode,
+  type EmbedPlaceholder,
+  type RichTextDocument,
+  type StyleRun,
 } from '../types/nativeTypes';
 import { defaultTagRegistry, TagRegistry, type SerializedTag } from '../registry/TagRegistry';
 import { coalesceRuns } from './nativeBridge';
@@ -68,7 +69,54 @@ function wrapRun(run: StyleRun, inner: string, registry: TagRegistry): string {
   return result;
 }
 
+/** Parse a table embed's `data.rows` back into a grid of cell strings. */
+function tableRows(embed: EmbedPlaceholder): string[][] {
+  try {
+    const parsed = JSON.parse(embed.data?.rows ?? '[]') as unknown;
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+    return parsed.map((row) =>
+      Array.isArray(row) ? row.map((cell) => String(cell)) : [],
+    );
+  } catch {
+    return [];
+  }
+}
+
+/** Serialize a `kind: 'table'` embed to a `<table>` element (read-only tables). */
+function serializeTable(embed: EmbedPlaceholder): string {
+  const rows = tableRows(embed);
+  const header = embed.data?.header === 'true';
+  let out = '<table>';
+  rows.forEach((row, r) => {
+    const cellTag = header && r === 0 ? 'th' : 'td';
+    out += '<tr>';
+    for (const cell of row) {
+      out += `<${cellTag}>${escapeText(cell)}</${cellTag}>`;
+    }
+    out += '</tr>';
+  });
+  out += '</table>';
+  return out;
+}
+
+/** True if a block is exactly one table embed (so it serializes as a bare `<table>`). */
+function tableEmbedOf(block: BlockNode): EmbedPlaceholder | undefined {
+  if (
+    block.text === OBJECT_REPLACEMENT_CHAR &&
+    block.embeds?.length === 1 &&
+    block.embeds[0].kind === 'table'
+  ) {
+    return block.embeds[0];
+  }
+  return undefined;
+}
+
 function serializeEmbed(embed: EmbedPlaceholder, registry: TagRegistry): string {
+  if (embed.kind === 'table') {
+    return serializeTable(embed);
+  }
   const serialized = registry.serializeEmbed(embed);
   if (!serialized) {
     return '';
@@ -129,6 +177,11 @@ function serializeInline(block: BlockNode, registry: TagRegistry): string {
 }
 
 function serializeBlock(block: BlockNode, registry: TagRegistry): string {
+  // A block that is nothing but a table embed becomes a bare <table> (no <p> wrapper).
+  const table = tableEmbedOf(block);
+  if (table) {
+    return serializeTable(table);
+  }
   const tag = registry.serializeBlock(block) ?? { tag: block.tag || 'p', attrs: {} };
   const attrs = withAlignment(tag.attrs, block.align);
   const withAttrs: SerializedTag = { ...tag, attrs };

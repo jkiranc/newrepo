@@ -156,6 +156,55 @@ describe('documentToHtml', () => {
     defaultTagRegistry.unregister('mention');
   });
 
+  it('round-trips a header table', () => {
+    const html = roundTrip(
+      '<table><tr><th>Name</th><th>Age</th></tr><tr><td>Ann</td><td>30</td></tr></table>',
+    );
+    expect(html).toBe(
+      '<table><tr><th>Name</th><th>Age</th></tr><tr><td>Ann</td><td>30</td></tr></table>',
+    );
+  });
+
+  it('round-trips a body-only table and tolerates tbody/thead wrappers', () => {
+    const html = roundTrip(
+      '<table><thead><tr><th>H</th></tr></thead><tbody><tr><td>a</td></tr><tr><td>b</td></tr></tbody></table>',
+    );
+    expect(html).toBe('<table><tr><th>H</th></tr><tr><td>a</td></tr><tr><td>b</td></tr></table>');
+  });
+
+  it('builds a table embed block from HTML', () => {
+    const doc = htmlToDocument('<table><tr><td>a</td><td>b</td></tr></table>');
+    expect(doc.blocks).toHaveLength(1);
+    const embed = doc.blocks[0].embeds?.[0];
+    expect(embed?.kind).toBe('table');
+    expect(JSON.parse(embed?.data.rows ?? '[]')).toEqual([['a', 'b']]);
+  });
+
+  it('serializes a table embed built directly from the document model', () => {
+    const nativeDoc = {
+      blocks: [
+        {
+          id: 'b0',
+          tag: 'p',
+          text: '￼',
+          styleRuns: [],
+          embeds: [
+            {
+              id: 'e0',
+              offset: 0,
+              tag: 'table',
+              kind: 'table' as const,
+              data: { rows: JSON.stringify([['A', 'B'], ['1', '2']]), header: 'true' },
+            },
+          ],
+        },
+      ],
+    };
+    expect(documentToHtml(nativeDoc)).toBe(
+      '<table><tr><th>A</th><th>B</th></tr><tr><td>1</td><td>2</td></tr></table>',
+    );
+  });
+
   it('round-trips a registered custom embed tag with no native changes', () => {
     defaultTagRegistry.register({
       tag: 'mention',

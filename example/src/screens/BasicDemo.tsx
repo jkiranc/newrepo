@@ -14,6 +14,11 @@ const INITIAL_HTML = `
 <ul><li>bullet one</li><li>bullet two</li></ul>
 <ol><li>first</li><li>second</li></ol>
 <blockquote>A block quote.</blockquote>
+<table>
+  <tr><th>Feature</th><th>iOS</th><th>Android</th></tr>
+  <tr><td>Bold</td><td>Yes</td><td>Yes</td></tr>
+  <tr><td>Tables</td><td>Read-only</td><td>Read-only</td></tr>
+</table>
 `;
 
 export function BasicDemo() {

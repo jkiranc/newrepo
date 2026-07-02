@@ -22,6 +22,7 @@ final class EmbedTextAttachment: NSTextAttachment {
         super.init(data: nil, ofType: nil)
         switch embed.kind {
         case "image": renderImage()
+        case "table": renderTable()
         default: renderChip()
         }
     }
@@ -64,6 +65,78 @@ final class EmbedTextAttachment: NSTextAttachment {
         }
         // Nudge the baseline so the chip sits inline with surrounding text.
         bounds = CGRect(x: 0, y: font.descender, width: size.width, height: size.height)
+    }
+
+    // MARK: - Table (read-only)
+
+    private func renderTable() {
+        let rows = Self.parseTableRows(embed.data["rows"])
+        guard !rows.isEmpty else { return }
+        let hasHeader = embed.data["header"] == "true"
+        let font = UIFont.systemFont(ofSize: SpanApplier.defaultFontSize)
+        let headerFont = UIFont.boldSystemFont(ofSize: SpanApplier.defaultFontSize)
+        let cellPad: CGFloat = 8
+        let borderColor = UIColor(white: 0.8, alpha: 1)
+        let headerFill = UIColor(white: 0.95, alpha: 1)
+        let textColor = UIColor(white: 0.13, alpha: 1)
+
+        let colCount = rows.map { $0.count }.max() ?? 0
+        var colWidths = [CGFloat](repeating: 0, count: colCount)
+        for (r, row) in rows.enumerated() {
+            for (c, cell) in row.enumerated() {
+                let f = hasHeader && r == 0 ? headerFont : font
+                let w = (cell as NSString).size(withAttributes: [.font: f]).width
+                colWidths[c] = max(colWidths[c], w)
+            }
+        }
+        for c in colWidths.indices { colWidths[c] += cellPad * 2 }
+
+        let lineHeight = font.lineHeight
+        let rowHeight = lineHeight + cellPad * 2
+        let totalWidth = colWidths.reduce(0, +)
+        let totalHeight = rowHeight * CGFloat(rows.count)
+        guard totalWidth > 0, totalHeight > 0 else { return }
+
+        let size = CGSize(width: ceil(totalWidth), height: ceil(totalHeight))
+        let renderer = UIGraphicsImageRenderer(size: size)
+        image = renderer.image { ctx in
+            let cg = ctx.cgContext
+            cg.setStrokeColor(borderColor.cgColor)
+            cg.setLineWidth(1)
+            var cellTop: CGFloat = 0
+            for (r, row) in rows.enumerated() {
+                let isHeader = hasHeader && r == 0
+                var cellLeft: CGFloat = 0
+                for c in colWidths.indices {
+                    let rect = CGRect(x: cellLeft, y: cellTop, width: colWidths[c], height: rowHeight)
+                    if isHeader {
+                        headerFill.setFill()
+                        cg.fill(rect)
+                    }
+                    cg.stroke(rect)
+                    let cell = c < row.count ? row[c] : ""
+                    (cell as NSString).draw(
+                        at: CGPoint(x: cellLeft + cellPad, y: cellTop + cellPad),
+                        withAttributes: [
+                            .font: isHeader ? headerFont : font,
+                            .foregroundColor: textColor,
+                        ]
+                    )
+                    cellLeft += colWidths[c]
+                }
+                cellTop += rowHeight
+            }
+        }
+        bounds = CGRect(x: 0, y: font.descender, width: size.width, height: size.height)
+    }
+
+    /// Parse `data["rows"]` (a JSON string of string[][]) into a grid, tolerating malformed input.
+    private static func parseTableRows(_ json: String?) -> [[String]] {
+        guard let json, let data = json.data(using: .utf8),
+              let parsed = try? JSONSerialization.jsonObject(with: data) as? [[Any]] else {
+            return []
+        }
+        return parsed.map { row in row.map { "\($0)" } }
     }
 
     // MARK: - Image

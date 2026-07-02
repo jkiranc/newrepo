@@ -307,6 +307,56 @@ function emptyStyle(): RunStyle {
   return { tag: '' };
 }
 
+/** Build a read-only table embed from a `<table>` node, flattening cells to plain text. */
+function tableEmbedFromNode(node: HtmlNode, ids: IdCounter): EmbedPlaceholder {
+  const rows: string[][] = [];
+  let header = false;
+  const walkRows = (n: HtmlNode) => {
+    if (!isElement(n)) {
+      return;
+    }
+    for (const child of n.children) {
+      if (!isElement(child)) {
+        continue;
+      }
+      if (child.tag === 'thead' || child.tag === 'tbody' || child.tag === 'tfoot') {
+        walkRows(child);
+      } else if (child.tag === 'tr') {
+        const cells: string[] = [];
+        let rowHasHeader = false;
+        for (const cell of child.children) {
+          if (isElement(cell) && (cell.tag === 'td' || cell.tag === 'th')) {
+            if (cell.tag === 'th') {
+              rowHasHeader = true;
+            }
+            cells.push(collapseWhitespace(extractText(cell)).trim());
+          }
+        }
+        if (rows.length === 0 && rowHasHeader) {
+          header = true;
+        }
+        rows.push(cells);
+      }
+    }
+  };
+  walkRows(node);
+  return {
+    id: `e${ids.embed++}`,
+    offset: 0,
+    tag: 'table',
+    kind: 'table',
+    data: { rows: JSON.stringify(rows), header: header ? 'true' : 'false' },
+  };
+}
+
+/** Build a block whose sole content is a read-only table embed. */
+function tableBlock(node: HtmlNode, ids: IdCounter): BlockNode {
+  const b = newBlock(ids, { tag: 'p' });
+  b.text = OBJECT_REPLACEMENT_CHAR;
+  b.embeds.push(tableEmbedFromNode(node, ids));
+  return finalize(b);
+}
+
 /** Read a `text-align` value (from the `style` attr or `align` attr) into an Alignment. */
 function alignmentFromAttrs(attrs: Record<string, string>): Alignment | undefined {
   const css = parseInlineStyle(attrs.style);
@@ -345,6 +395,12 @@ function processFlow(
     if (node.tag === 'ul' || node.tag === 'ol') {
       flush();
       processList(node, blocks, registry, node.tag === 'ol' ? 'ordered' : 'bullet', 0, ids);
+      continue;
+    }
+
+    if (node.tag === 'table') {
+      flush();
+      blocks.push(tableBlock(node, ids));
       continue;
     }
 

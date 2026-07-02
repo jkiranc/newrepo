@@ -69,6 +69,11 @@ export interface RichTextEditorRef {
   insertText: (text: string) => void;
   /** Insert an image embed by URL at the caret. */
   insertImage: (src: string) => void;
+  /**
+   * Insert a read-only table with `rows` × `cols` cells at the caret. The first row is a
+   * header. Optionally seed cell text as a row-major grid; missing cells render empty.
+   */
+  insertTable: (rows: number, cols: number, cells?: string[][]) => void;
   insertEmbed: (embed: EmbedPlaceholder) => void;
   undo: () => void;
   redo: () => void;
@@ -222,6 +227,24 @@ export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>
             kind: 'image',
             src,
             data: {},
+          };
+          Commands.insertEmbed(nativeRef.current, JSON.stringify(embed));
+        },
+        insertTable: (rows, cols, cells) => {
+          if (!nativeRef.current) {
+            return;
+          }
+          const grid = Array.from({ length: Math.max(1, rows) }, (_r, r) =>
+            Array.from({ length: Math.max(1, cols) }, (_c, c) =>
+              cells?.[r]?.[c] ?? (r === 0 ? `Column ${c + 1}` : ''),
+            ),
+          );
+          const embed: EmbedPlaceholder = {
+            id: `table-${Date.now()}`,
+            offset: 0,
+            tag: 'table',
+            kind: 'table',
+            data: { rows: JSON.stringify(grid), header: 'true' },
           };
           Commands.insertEmbed(nativeRef.current, JSON.stringify(embed));
         },
