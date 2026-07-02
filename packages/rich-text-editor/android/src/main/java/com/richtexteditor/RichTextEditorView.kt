@@ -2,8 +2,10 @@ package com.richtexteditor
 
 import android.content.Context
 import android.text.Editable
+import android.text.InputType
 import android.text.Spannable
 import android.text.TextWatcher
+import android.view.Gravity
 import android.text.style.ForegroundColorSpan
 import android.text.style.LeadingMarginSpan
 import android.text.style.RelativeSizeSpan
@@ -51,6 +53,12 @@ class RichTextEditorView(context: Context) : AppCompatEditText(context) {
 
   init {
     setPadding(24, 24, 24, 24)
+    // Top-align content (EditText centers vertically when its height exceeds the text) and make
+    // it a multi-line editor so Enter inserts newlines and text wraps from the top.
+    gravity = Gravity.TOP or Gravity.START
+    inputType = InputType.TYPE_CLASS_TEXT or
+      InputType.TYPE_TEXT_FLAG_MULTI_LINE or
+      InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
     addTextChangedListener(object : TextWatcher {
       override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
       override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
