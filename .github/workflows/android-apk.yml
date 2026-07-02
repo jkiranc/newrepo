@@ -40,6 +40,9 @@ jobs:
 
       - name: Generate React Native host app
         run: |
+          # Remove the root workspaces field so npm, when run in host/, treats the host app as a
+          # standalone project instead of a stray member of the monorepo workspace tree.
+          npm pkg delete workspaces
           npx --yes @react-native-community/cli@${CLI_VERSION} init RTEHost \
             --version ${RN_VERSION} \
             --directory ${HOST_DIR} \
@@ -92,6 +95,20 @@ jobs:
         # Fabric codegen itself, so a prebuilt lib is not needed.
         run: npm install --ignore-scripts --no-audit --no-fund
 
+      - name: Install library runtime deps for Metro
+        # Ensure the library's own runtime deps (htmlparser2) are resolvable by Metro when it
+        # bundles the library from source at packages/rich-text-editor.
+        run: ( cd packages/rich-text-editor && npm install --omit=dev --ignore-scripts --no-audit --no-fund )
+
+      - name: Diagnose module resolution
+        run: |
+          echo "=== library in host/node_modules? ==="
+          ls -la ${HOST_DIR}/node_modules/react-native-fabric-rich-text 2>&1 | head -5 || true
+          echo "=== htmlparser2 in host? ==="
+          ls ${HOST_DIR}/node_modules/htmlparser2 >/dev/null 2>&1 && echo yes || echo no
+          echo "=== htmlparser2 in library? ==="
+          ls packages/rich-text-editor/node_modules/htmlparser2 >/dev/null 2>&1 && echo yes || echo no
+
       - name: Sign release with the debug keystore
         run: |
           # Make the release build self-signed with the bundled debug keystore so the APK
@@ -117,7 +134,7 @@ jobs:
 
       - name: Build release APK
         working-directory: ${{ env.HOST_DIR }}/android
-        run: ./gradlew assembleRelease --no-daemon --stacktrace
+        run: ./gradlew assembleRelease --no-daemon
 
       - name: Upload APK
         if: success()
