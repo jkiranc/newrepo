@@ -21,6 +21,8 @@ jobs:
     runs-on: ubuntu-latest
     env:
       RN_VERSION: "0.76.0"
+      # @react-native-community/cli has its own versioning (not the RN version). 15.x targets RN 0.76.
+      CLI_VERSION: "15.0.1"
       HOST_DIR: host
     steps:
       - uses: actions/checkout@v4
@@ -38,7 +40,7 @@ jobs:
 
       - name: Generate React Native host app
         run: |
-          npx --yes @react-native-community/cli@${RN_VERSION} init RTEHost \
+          npx --yes @react-native-community/cli@${CLI_VERSION} init RTEHost \
             --version ${RN_VERSION} \
             --directory ${HOST_DIR} \
             --skip-install \
