@@ -55,6 +55,10 @@ jobs:
           cp -R example/src ${HOST_DIR}/src
           # Link the local library so autolinking + codegen discover it.
           ( cd ${HOST_DIR} && npm pkg set dependencies.react-native-fabric-rich-text="file:../packages/rich-text-editor" )
+          # The host consumes the library from source (Metro reads its `react-native` field), so
+          # drop the `prepare` (bob build) script that a file: install would otherwise run — its
+          # build tool is a devDep not present in a consumer install.
+          ( cd packages/rich-text-editor && npm pkg delete scripts.prepare )
           # Force the New Architecture on (RN 0.76 default, set explicitly to be safe).
           echo "newArchEnabled=true" >> ${HOST_DIR}/android/gradle.properties
           # Build a single ABI first to keep the initial build fast.
