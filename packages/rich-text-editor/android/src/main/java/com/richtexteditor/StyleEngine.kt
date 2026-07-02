@@ -6,6 +6,8 @@ import android.text.Spanned
 import android.text.style.CharacterStyle
 import android.text.style.StrikethroughSpan
 import android.text.style.StyleSpan
+import android.text.style.SubscriptSpan
+import android.text.style.SuperscriptSpan
 import android.text.style.UnderlineSpan
 
 // -------------------------------------------------------------------------------------------
@@ -24,7 +26,9 @@ enum class InlineStyle(val wireName: String) {
   BOLD("bold"),
   ITALIC("italic"),
   UNDERLINE("underline"),
-  STRIKETHROUGH("strikethrough");
+  STRIKETHROUGH("strikethrough"),
+  SUPERSCRIPT("superscript"),
+  SUBSCRIPT("subscript");
 
   companion object {
     fun fromWire(name: String): InlineStyle? = values().firstOrNull { it.wireName == name }
@@ -86,6 +90,8 @@ object StyleEngine {
     InlineStyle.ITALIC -> span is StyleSpan && (span.style and Typeface.ITALIC) != 0
     InlineStyle.UNDERLINE -> span is UnderlineSpan
     InlineStyle.STRIKETHROUGH -> span is StrikethroughSpan
+    InlineStyle.SUPERSCRIPT -> span is SuperscriptSpan
+    InlineStyle.SUBSCRIPT -> span is SubscriptSpan
   }
 
   private fun newSpan(style: InlineStyle): CharacterStyle = when (style) {
@@ -93,5 +99,7 @@ object StyleEngine {
     InlineStyle.ITALIC -> StyleSpan(Typeface.ITALIC)
     InlineStyle.UNDERLINE -> UnderlineSpan()
     InlineStyle.STRIKETHROUGH -> StrikethroughSpan()
+    InlineStyle.SUPERSCRIPT -> SuperscriptSpan()
+    InlineStyle.SUBSCRIPT -> SubscriptSpan()
   }
 }

@@ -28,6 +28,8 @@ const STYLE_KEYS: (keyof RunStyle)[] = [
   'italic',
   'underline',
   'strikethrough',
+  'superscript',
+  'subscript',
   'color',
   'backgroundColor',
   'fontSize',

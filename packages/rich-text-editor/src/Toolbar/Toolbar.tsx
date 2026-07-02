@@ -33,6 +33,8 @@ const INLINE_BUTTONS: { label: string; style: InlineStyleName }[] = [
   { label: 'I', style: 'italic' },
   { label: 'U', style: 'underline' },
   { label: 'S', style: 'strikethrough' },
+  { label: 'x²', style: 'superscript' },
+  { label: 'x₂', style: 'subscript' },
 ];
 
 const BLOCK_OPTIONS: { label: string; tag: string }[] = [

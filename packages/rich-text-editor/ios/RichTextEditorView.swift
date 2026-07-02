@@ -345,6 +345,10 @@ public final class RichTextEditorViewImpl: NSObject, UITextViewDelegate {
         }
         if attrs[.underlineStyle] != nil { run.underline = true; styled = true }
         if attrs[.strikethroughStyle] != nil { run.strikethrough = true; styled = true }
+        if let offset = (attrs[.baselineOffset] as? NSNumber)?.doubleValue, offset != 0 {
+            if offset > 0 { run.superscript = true } else { run.`subscript` = true }
+            styled = true
+        }
         if attrs[.link] != nil, let url = attrs[.link] as? URL { run.link = url.absoluteString; styled = true }
         if let color = attrs[.foregroundColor] as? UIColor, let hex = color.rteHexString {
             run.color = hex; styled = true
@@ -357,7 +361,8 @@ public final class RichTextEditorViewImpl: NSObject, UITextViewDelegate {
 
     private func sameStyle(_ a: StyleRun, _ b: StyleRun) -> Bool {
         a.bold == b.bold && a.italic == b.italic && a.underline == b.underline
-            && a.strikethrough == b.strikethrough && a.color == b.color
+            && a.strikethrough == b.strikethrough && a.superscript == b.superscript
+            && a.`subscript` == b.`subscript` && a.color == b.color
             && a.backgroundColor == b.backgroundColor && a.link == b.link
     }
 

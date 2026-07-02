@@ -22,6 +22,8 @@ export interface StyleRun {
   italic?: boolean;
   underline?: boolean;
   strikethrough?: boolean;
+  superscript?: boolean;
+  subscript?: boolean;
   /** `#RRGGBB` or `#RRGGBBAA`. */
   color?: string;
   /** `#RRGGBB` or `#RRGGBBAA`. */
@@ -103,6 +105,8 @@ export type InlineStyleName =
   | 'bold'
   | 'italic'
   | 'underline'
-  | 'strikethrough';
+  | 'strikethrough'
+  | 'superscript'
+  | 'subscript';
 
 export const EMPTY_DOCUMENT: RichTextDocument = { blocks: [] };

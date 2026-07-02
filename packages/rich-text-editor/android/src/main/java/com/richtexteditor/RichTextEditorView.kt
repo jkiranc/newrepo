@@ -12,6 +12,8 @@ import android.text.style.LeadingMarginSpan
 import android.text.style.RelativeSizeSpan
 import android.text.style.StrikethroughSpan
 import android.text.style.StyleSpan
+import android.text.style.SubscriptSpan
+import android.text.style.SuperscriptSpan
 import android.text.style.TypefaceSpan
 import android.text.style.URLSpan
 import android.text.style.UnderlineSpan
@@ -393,6 +395,8 @@ class RichTextEditorView(context: Context) : AppCompatEditText(context) {
         }
         is UnderlineSpan -> { run.put("underline", true); styled = true }
         is StrikethroughSpan -> { run.put("strikethrough", true); styled = true }
+        is SuperscriptSpan -> { run.put("superscript", true); styled = true }
+        is SubscriptSpan -> { run.put("subscript", true); styled = true }
         is URLSpan -> { run.put("link", span.url); styled = true }
         is ForegroundColorSpan -> {
           run.put("color", String.format("#%06X", 0xFFFFFF and span.foregroundColor)); styled = true

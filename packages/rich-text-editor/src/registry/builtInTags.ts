@@ -112,6 +112,18 @@ export function installBuiltInTags(registry: TagRegistry): void {
     fromStyleRun: (run) =>
       run.fontFamily === 'monospace' ? { tag: 'code', attrs: {} } : null,
   });
+  registry.register({
+    tag: 'sup',
+    category: 'inline',
+    toStyleRun: () => ({ superscript: true }),
+    fromStyleRun: (run) => (run.superscript ? { tag: 'sup', attrs: {} } : null),
+  });
+  registry.register({
+    tag: 'sub',
+    category: 'inline',
+    toStyleRun: () => ({ subscript: true }),
+    fromStyleRun: (run) => (run.subscript ? { tag: 'sub', attrs: {} } : null),
+  });
 
   // ── links ──────────────────────────────────────────────────────────────────
   registry.register({

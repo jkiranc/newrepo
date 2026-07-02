@@ -18,6 +18,8 @@ struct StyleRun: Codable {
     var italic: Bool? = nil
     var underline: Bool? = nil
     var strikethrough: Bool? = nil
+    var superscript: Bool? = nil
+    var `subscript`: Bool? = nil
     var color: String? = nil
     var backgroundColor: String? = nil
     var fontSize: Double? = nil
@@ -145,6 +147,11 @@ enum SpanApplier {
         }
         if run.strikethrough == true {
             string.addAttribute(.strikethroughStyle, value: NSUnderlineStyle.single.rawValue, range: range)
+        }
+        if run.superscript == true {
+            string.addAttribute(.baselineOffset, value: font.pointSize * 0.35, range: range)
+        } else if run.`subscript` == true {
+            string.addAttribute(.baselineOffset, value: -font.pointSize * 0.25, range: range)
         }
         if let color = run.color, let uiColor = UIColor(hex: color) {
             string.addAttribute(.foregroundColor, value: uiColor, range: range)

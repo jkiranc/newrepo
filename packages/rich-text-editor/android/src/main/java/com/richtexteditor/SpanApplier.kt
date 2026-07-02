@@ -14,6 +14,8 @@ import android.text.style.LeadingMarginSpan
 import android.text.style.RelativeSizeSpan
 import android.text.style.StrikethroughSpan
 import android.text.style.StyleSpan
+import android.text.style.SubscriptSpan
+import android.text.style.SuperscriptSpan
 import android.text.style.TypefaceSpan
 import android.text.style.URLSpan
 import android.text.style.UnderlineSpan
@@ -142,6 +144,8 @@ object SpanApplier {
     if (run.optBoolean("italic")) builder.setSpan(StyleSpan(Typeface.ITALIC), start, end, flag)
     if (run.optBoolean("underline")) builder.setSpan(UnderlineSpan(), start, end, flag)
     if (run.optBoolean("strikethrough")) builder.setSpan(StrikethroughSpan(), start, end, flag)
+    if (run.optBoolean("superscript")) builder.setSpan(SuperscriptSpan(), start, end, flag)
+    if (run.optBoolean("subscript")) builder.setSpan(SubscriptSpan(), start, end, flag)
 
     run.optString("color").takeIf { it.isNotEmpty() }?.let { hex ->
       parseColor(hex)?.let { builder.setSpan(ForegroundColorSpan(it), start, end, flag) }

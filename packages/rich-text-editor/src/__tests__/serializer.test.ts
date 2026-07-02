@@ -28,6 +28,11 @@ describe('documentToHtml', () => {
     expect(html).toBe('<p><strong><em>x</em></strong></p>');
   });
 
+  it('round-trips superscript and subscript', () => {
+    expect(roundTrip('<p>x<sup>2</sup></p>')).toBe('<p>x<sup>2</sup></p>');
+    expect(roundTrip('<p>H<sub>2</sub>O</p>')).toBe('<p>H<sub>2</sub>O</p>');
+  });
+
   it('serializes a link', () => {
     expect(roundTrip('<p><a href="https://x.com">y</a></p>')).toBe(
       '<p><a href="https://x.com">y</a></p>',

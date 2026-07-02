@@ -12,7 +12,7 @@ import UIKit
 // color/link/size arrive via the document, not user toggles.
 // -------------------------------------------------------------------------------------------
 enum InlineStyle: String, CaseIterable {
-    case bold, italic, underline, strikethrough
+    case bold, italic, underline, strikethrough, superscript, `subscript`
 }
 
 enum StyleEngine {
@@ -37,6 +37,16 @@ enum StyleEngine {
             string.enumerateAttribute(key, in: range) { value, _, stop in
                 let raw = (value as? NSNumber)?.intValue ?? 0
                 if raw == 0 {
+                    active = false
+                    stop.pointee = true
+                }
+            }
+        case .superscript, .subscript:
+            let wantPositive = style == .superscript
+            string.enumerateAttribute(.baselineOffset, in: range) { value, _, stop in
+                let offset = (value as? NSNumber)?.doubleValue ?? 0
+                let ok = wantPositive ? offset > 0 : offset < 0
+                if !ok {
                     active = false
                     stop.pointee = true
                 }
@@ -83,6 +93,16 @@ enum StyleEngine {
             } else {
                 string.removeAttribute(key, range: range)
             }
+        case .superscript, .subscript:
+            if enabled {
+                let factor: CGFloat = style == .superscript ? 0.35 : -0.25
+                string.enumerateAttribute(.font, in: range) { value, subRange, _ in
+                    let size = (value as? UIFont)?.pointSize ?? SpanApplier.defaultFontSize
+                    string.addAttribute(.baselineOffset, value: size * factor, range: subRange)
+                }
+            } else {
+                string.removeAttribute(.baselineOffset, range: range)
+            }
         }
     }
 
@@ -113,6 +133,17 @@ enum StyleEngine {
                 attrs.removeValue(forKey: key)
             }
             return (attrs, enabled)
+        case .superscript, .subscript:
+            let wantPositive = style == .superscript
+            let current = (attrs[.baselineOffset] as? NSNumber)?.doubleValue ?? 0
+            let isOn = wantPositive ? current > 0 : current < 0
+            if isOn {
+                attrs.removeValue(forKey: .baselineOffset)
+                return (attrs, false)
+            }
+            let size = (attrs[.font] as? UIFont)?.pointSize ?? SpanApplier.defaultFontSize
+            attrs[.baselineOffset] = size * (wantPositive ? 0.35 : -0.25)
+            return (attrs, true)
         }
     }
 }
