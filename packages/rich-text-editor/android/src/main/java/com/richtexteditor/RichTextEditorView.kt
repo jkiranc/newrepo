@@ -2,6 +2,7 @@ package com.richtexteditor
 
 import android.content.Context
 import android.text.Editable
+import android.text.Spannable
 import android.text.TextWatcher
 import android.text.style.ForegroundColorSpan
 import android.text.style.StrikethroughSpan
@@ -9,6 +10,7 @@ import android.text.style.StyleSpan
 import android.text.style.URLSpan
 import android.text.style.UnderlineSpan
 import android.graphics.Typeface
+import android.view.MotionEvent
 import androidx.appcompat.widget.AppCompatEditText
 import org.json.JSONArray
 import org.json.JSONObject
@@ -95,8 +97,28 @@ class RichTextEditorView(context: Context) : AppCompatEditText(context) {
   }
 
   fun insertEmbed(embedJson: String) {
-    // Phase 4b: insert an EmbedReplacementSpan at the cursor for the decoded embed.
+    val editable = text ?: return
+    val embed = JSONObject(embedJson)
+    val span = EmbedReplacementSpan.fromEmbed(embed)
+    val pos = selectionStart.coerceIn(0, editable.length)
+    suppressEvents = true
+    editable.insert(pos, "￼")
+    editable.setSpan(span, pos, pos + 1, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+    setSelection(pos + 1)
+    suppressEvents = false
     emitDocumentChange()
+  }
+
+  override fun onTouchEvent(event: MotionEvent): Boolean {
+    if (event.action == MotionEvent.ACTION_UP) {
+      val offset = getOffsetForPosition(event.x, event.y)
+      val editable = text
+      if (editable != null && offset in 0 until editable.length) {
+        val spans = editable.getSpans(offset, offset + 1, EmbedReplacementSpan::class.java)
+        spans.firstOrNull()?.let { onEmbedPress?.invoke(it.tag, it.dataJson) }
+      }
+    }
+    return super.onTouchEvent(event)
   }
 
   override fun onSelectionChanged(selStart: Int, selEnd: Int) {
@@ -162,6 +184,23 @@ class RichTextEditorView(context: Context) : AppCompatEditText(context) {
       .put("tag", currentBlockTag)
       .put("text", editable.toString())
       .put("styleRuns", runs)
+
+    // Recover embeds from their chip spans so onChangeHtml round-trips custom tags.
+    val embeds = JSONArray()
+    for (span in editable.getSpans(0, editable.length, EmbedReplacementSpan::class.java)) {
+      val at = editable.getSpanStart(span)
+      embeds.put(
+        JSONObject()
+          .put("id", "e$at")
+          .put("offset", at)
+          .put("tag", span.tag)
+          .put("kind", span.kind)
+          .put("label", span.label)
+          .put("data", JSONObject(span.dataJson)),
+      )
+    }
+    if (embeds.length() > 0) block.put("embeds", embeds)
+
     val doc = JSONObject().put("blocks", JSONArray().put(block))
     onDocumentChange?.invoke(doc.toString())
   }

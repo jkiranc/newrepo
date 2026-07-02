@@ -58,6 +58,45 @@ describe('documentToHtml', () => {
     expect(roundTrip('<p>a<br>b</p>')).toBe('<p>a<br />b</p>');
   });
 
+  it('serializes a native-reconstructed embed document to a custom tag', () => {
+    // This is the exact document shape the native views emit via onDocumentChange after an
+    // embed is rendered/inserted — validating the native -> JS -> HTML contract.
+    defaultTagRegistry.register({
+      tag: 'mention',
+      category: 'embed',
+      fromEmbed: (embed) => ({
+        tag: 'mention',
+        attrs: {
+          'data-id': embed.data.mentionId,
+          'data-label': (embed.label ?? '').replace(/^@/, ''),
+        },
+        selfClosing: true,
+      }),
+    });
+    const nativeDoc = {
+      blocks: [
+        {
+          id: 'b0',
+          tag: 'p',
+          text: 'hi ￼',
+          styleRuns: [],
+          embeds: [
+            {
+              id: 'e3',
+              offset: 3,
+              tag: 'mention',
+              kind: 'chip' as const,
+              label: '@alice',
+              data: { mentionId: '123' },
+            },
+          ],
+        },
+      ],
+    };
+    expect(documentToHtml(nativeDoc)).toBe('<p>hi <mention data-id="123" data-label="alice" /></p>');
+    defaultTagRegistry.unregister('mention');
+  });
+
   it('round-trips a registered custom embed tag with no native changes', () => {
     defaultTagRegistry.register({
       tag: 'mention',

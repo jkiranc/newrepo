@@ -105,7 +105,8 @@ highlighted chip — with **zero** native changes.
 | 1 | JS core: parser, tag registry, native bridge, serializer, tests | ✅ |
 | 2 | iOS native view — inline style runs (bold/italic/underline/strike, toggle + typing attributes) | ✅ code / ⏳ on-device QA |
 | 3 | Android native view — parity (toggle engine + pending-style typing) | ✅ code / ⏳ on-device QA |
-| 4 | Blocks (lists/quote/code) + embeds (image/chip) | ⬜ |
+| 4b | Embeds (image + chip) — native `<mention>` chip render, insert, tap, round-trip | ✅ code / ⏳ on-device QA |
+| 4a | Blocks: lists/quote/code markers + multi-block editing & reconstruction | ⬜ |
 | 5 | Toolbar polish, docs, first publish | ⬜ |
 
 See [`docs/architecture.md`](./docs/architecture.md) for the full design and

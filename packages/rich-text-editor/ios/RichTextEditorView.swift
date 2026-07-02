@@ -28,6 +28,11 @@ public final class RichTextEditorViewImpl: NSObject, UITextViewDelegate {
         textView.delegate = self
         textView.font = .systemFont(ofSize: SpanApplier.defaultFontSize)
         textView.textContainerInset = UIEdgeInsets(top: 12, left: 12, bottom: 12, right: 12)
+
+        // Detect taps on embeds (chips/images) so they can report onEmbedPress.
+        let tap = UITapGestureRecognizer(target: self, action: #selector(handleTap(_:)))
+        tap.cancelsTouchesInView = false
+        textView.addGestureRecognizer(tap)
     }
 
     // MARK: - Props
@@ -54,6 +59,7 @@ public final class RichTextEditorViewImpl: NSObject, UITextViewDelegate {
         guard let decoded = SpanApplier.decode(json) else { return }
         document = decoded
         textView.attributedText = SpanApplier.attributedString(for: decoded)
+        wireImageCallbacks()
     }
 
     @objc public func focus() { textView.becomeFirstResponder() }
@@ -83,7 +89,21 @@ public final class RichTextEditorViewImpl: NSObject, UITextViewDelegate {
     }
 
     @objc public func insertEmbedJSON(_ json: String) {
-        // Phase 4b: insert an NSTextAttachment at the caret for the decoded embed.
+        guard let data = json.data(using: .utf8),
+              let embed = try? JSONDecoder().decode(EmbedPlaceholder.self, from: data) else { return }
+        let attachment = EmbedTextAttachment(embed: embed)
+        attachment.onImageLoaded = { [weak self] in self?.invalidateLayout() }
+
+        let piece = NSMutableAttributedString(string: "\u{FFFC}")
+        let range = NSRange(location: 0, length: 1)
+        piece.addAttribute(.attachment, value: attachment, range: range)
+        piece.addAttribute(.font, value: UIFont.systemFont(ofSize: SpanApplier.defaultFontSize), range: range)
+
+        let mutable = NSMutableAttributedString(attributedString: textView.attributedText ?? NSAttributedString())
+        let insertAt = min(textView.selectedRange.location, mutable.length)
+        mutable.insert(piece, at: insertAt)
+        textView.attributedText = mutable
+        textView.selectedRange = NSRange(location: insertAt + 1, length: 0)
         emitDocumentChange()
     }
 
@@ -116,14 +136,22 @@ public final class RichTextEditorViewImpl: NSObject, UITextViewDelegate {
 
     // MARK: - Attributed string → document
 
-    /// Walk the attributed string and coalesce contiguous equal-attribute ranges into runs.
-    /// Phase 3 fills in full block/list/embed reconstruction; Phase 2 keeps a single block.
+    /// Walk the attributed string, coalescing contiguous equal-attribute ranges into runs and
+    /// recovering embeds from their attachments. Multi-block/list reconstruction is Phase 4a.
     private func rebuildDocument() -> RichTextDocument {
         let attributed = textView.attributedText ?? NSAttributedString()
         let text = attributed.string
+        let fullRange = NSRange(location: 0, length: attributed.length)
         var runs: [StyleRun] = []
+        var embeds: [EmbedPlaceholder] = []
 
-        attributed.enumerateAttributes(in: NSRange(location: 0, length: attributed.length)) { attrs, range, _ in
+        attributed.enumerateAttributes(in: fullRange) { attrs, range, _ in
+            if let attachment = attrs[.attachment] as? EmbedTextAttachment {
+                var embed = attachment.embed
+                embed.offset = range.location
+                embeds.append(embed)
+                return
+            }
             guard let run = styleRun(from: attrs, range: range) else { return }
             if var last = runs.last, last.start + last.length == run.start, sameStyle(last, run) {
                 last.length += run.length
@@ -135,8 +163,11 @@ public final class RichTextEditorViewImpl: NSObject, UITextViewDelegate {
 
         let blockId = document.blocks.first?.id ?? "b0"
         let block = BlockNode(
-            id: blockId, tag: document.blocks.first?.tag ?? "p",
-            text: text, styleRuns: runs
+            id: blockId,
+            tag: document.blocks.first?.tag ?? "p",
+            text: text,
+            styleRuns: runs,
+            embeds: embeds.isEmpty ? nil : embeds
         )
         return RichTextDocument(blocks: [block])
     }
@@ -199,4 +230,33 @@ public final class RichTextEditorViewImpl: NSObject, UITextViewDelegate {
     }
 
     private func currentBlockId(for range: NSRange) -> String { document.blocks.first?.id ?? "b0" }
+
+    // MARK: - Embeds
+
+    @objc private func handleTap(_ gesture: UITapGestureRecognizer) {
+        let point = gesture.location(in: textView)
+        guard let position = textView.closestPosition(to: point) else { return }
+        let index = textView.offset(from: textView.beginningOfDocument, to: position)
+        guard let text = textView.attributedText, index >= 0, index < text.length else { return }
+        if let attachment = text.attribute(.attachment, at: index, effectiveRange: nil) as? EmbedTextAttachment {
+            onEmbedPressBlock?(attachment.embed.tag, attachment.dataJSON)
+        }
+    }
+
+    private func wireImageCallbacks() {
+        guard let text = textView.attributedText else { return }
+        text.enumerateAttribute(.attachment, in: NSRange(location: 0, length: text.length)) { value, _, _ in
+            if let attachment = value as? EmbedTextAttachment {
+                attachment.onImageLoaded = { [weak self] in self?.invalidateLayout() }
+            }
+        }
+    }
+
+    /// Force a layout pass so a newly-sized (async-loaded) attachment reflows surrounding text.
+    private func invalidateLayout() {
+        let selection = textView.selectedRange
+        let current = textView.attributedText
+        textView.attributedText = current
+        textView.selectedRange = selection
+    }
 }

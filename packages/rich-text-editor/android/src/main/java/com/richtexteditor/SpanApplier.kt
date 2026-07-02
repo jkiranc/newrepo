@@ -52,6 +52,21 @@ object SpanApplier {
     for (i in 0 until runs.length()) {
       applyRun(builder, runs.getJSONObject(i), blockOffset = start, density = density)
     }
+
+    // Embeds: block text already holds a U+FFFC placeholder at each offset; draw a chip over it.
+    val embeds = block.optJSONArray("embeds") ?: JSONArray()
+    for (i in 0 until embeds.length()) {
+      val embed = embeds.getJSONObject(i)
+      val at = start + embed.optInt("offset")
+      if (at in 0 until builder.length) {
+        builder.setSpan(
+          EmbedReplacementSpan.fromEmbed(embed),
+          at,
+          at + 1,
+          Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
+        )
+      }
+    }
   }
 
   private fun applyBlockStyle(

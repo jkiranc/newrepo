@@ -14,31 +14,31 @@ import UIKit
 struct StyleRun: Codable {
     let start: Int
     let length: Int
-    var bold: Bool?
-    var italic: Bool?
-    var underline: Bool?
-    var strikethrough: Bool?
-    var color: String?
-    var backgroundColor: String?
-    var fontSize: Double?
-    var fontFamily: String?
-    var link: String?
+    var bold: Bool? = nil
+    var italic: Bool? = nil
+    var underline: Bool? = nil
+    var strikethrough: Bool? = nil
+    var color: String? = nil
+    var backgroundColor: String? = nil
+    var fontSize: Double? = nil
+    var fontFamily: String? = nil
+    var link: String? = nil
     var tag: String
 }
 
 struct EmbedPlaceholder: Codable {
     let id: String
-    let offset: Int
+    var offset: Int
     let tag: String
     let kind: String            // "image" | "chip"
-    var width: Double?
-    var height: Double?
-    var src: String?
-    var label: String?
-    var backgroundColor: String?
-    var textColor: String?
-    var cornerRadius: Double?
-    var data: [String: String]
+    var width: Double? = nil
+    var height: Double? = nil
+    var src: String? = nil
+    var label: String? = nil
+    var backgroundColor: String? = nil
+    var textColor: String? = nil
+    var cornerRadius: Double? = nil
+    var data: [String: String] = [:]
 }
 
 struct BlockNode: Codable {
@@ -46,11 +46,11 @@ struct BlockNode: Codable {
     let tag: String
     let text: String
     let styleRuns: [StyleRun]
-    var listType: String?
-    var listDepth: Int?
-    var listIndex: Int?
-    var indentLevel: Int?
-    var embeds: [EmbedPlaceholder]?
+    var listType: String? = nil
+    var listDepth: Int? = nil
+    var listIndex: Int? = nil
+    var indentLevel: Int? = nil
+    var embeds: [EmbedPlaceholder]? = nil
 }
 
 struct RichTextDocument: Codable {
@@ -90,6 +90,14 @@ enum SpanApplier {
             let range = clampedRange(start: run.start, length: run.length, in: block.text)
             guard range.length > 0 else { continue }
             apply(run: run, to: attributed, range: range, baseFont: baseFont)
+        }
+
+        // Embeds: the block text already contains a U+FFFC placeholder at each embed offset;
+        // attach a native-drawn chip/image over that single character (no text shifting).
+        for embed in block.embeds ?? [] {
+            let range = clampedRange(start: embed.offset, length: 1, in: block.text)
+            guard range.length == 1 else { continue }
+            attributed.addAttribute(.attachment, value: EmbedTextAttachment(embed: embed), range: range)
         }
         return attributed
     }
