@@ -5,6 +5,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
   type StyleProp,
@@ -56,6 +57,11 @@ const DEFAULT_COLORS = [
   '#F9AB00', '#1E8E3E', '#1A73E8', '#9334E6', '#D01884',
 ];
 
+const EMOJIS = [
+  '😀', '😂', '😍', '👍', '🙏', '🎉', '🔥', '💯', '✅', '❌',
+  '⭐', '❤️', '😎', '🤔', '👀', '🚀', '💡', '📌', '⚠️', '👏',
+];
+
 /**
  * A formatting toolbar built entirely in JS on top of the editor's imperative ref: a font
  * dropdown (Normal + H1–H6), inline styles, paragraph alignment, and a color picker. Ships as
@@ -71,6 +77,8 @@ export function Toolbar({
 }: ToolbarProps) {
   const [fontOpen, setFontOpen] = useState(false);
   const [colorOpen, setColorOpen] = useState(false);
+  const [emojiOpen, setEmojiOpen] = useState(false);
+  const [linkOpen, setLinkOpen] = useState(false);
 
   // Optimistic local state so the font label / alignment highlight update the moment the user
   // picks an option. Falls back to the (optional) props, which a consumer can drive from
@@ -136,6 +144,27 @@ export function Toolbar({
           <Text style={styles.label}>A</Text>
           <View style={styles.colorUnderline} />
         </TouchableOpacity>
+
+        <Divider />
+
+        <ToolbarButton label="🔗" active={false} accessibilityLabel="link" onPress={() => setLinkOpen(true)} />
+        <ToolbarButton
+          label="❝"
+          active={currentBlock === 'blockquote'}
+          accessibilityLabel="blockquote"
+          onPress={() => {
+            editorRef.current?.setBlockType('blockquote');
+            setCurrentBlock('blockquote');
+          }}
+        />
+        <ToolbarButton label="⇤|" active={false} accessibilityLabel="outdent" onPress={() => editorRef.current?.adjustIndent(-1)} />
+        <ToolbarButton label="|⇥" active={false} accessibilityLabel="indent" onPress={() => editorRef.current?.adjustIndent(1)} />
+        <ToolbarButton label="😊" active={false} accessibilityLabel="emoji" onPress={() => setEmojiOpen(true)} />
+
+        <Divider />
+
+        <ToolbarButton label="↶" active={false} accessibilityLabel="undo" onPress={() => editorRef.current?.undo()} />
+        <ToolbarButton label="↷" active={false} accessibilityLabel="redo" onPress={() => editorRef.current?.redo()} />
       </ScrollView>
 
       {/* Font dropdown menu */}
@@ -184,7 +213,88 @@ export function Toolbar({
           <Text style={styles.menuLabel}>Automatic</Text>
         </TouchableOpacity>
       </Popover>
+
+      {/* Emoji picker */}
+      <Popover visible={emojiOpen} onClose={() => setEmojiOpen(false)}>
+        <View style={styles.emojiGrid}>
+          {EMOJIS.map((e) => (
+            <TouchableOpacity
+              key={e}
+              accessibilityRole="button"
+              accessibilityLabel={`emoji-${e}`}
+              style={styles.emojiCell}
+              onPress={() => {
+                editorRef.current?.insertText(e);
+                setEmojiOpen(false);
+              }}
+            >
+              <Text style={styles.emoji}>{e}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      </Popover>
+
+      {/* Link URL input */}
+      <UrlInput
+        visible={linkOpen}
+        title="Link URL"
+        placeholder="https://example.com"
+        onClose={() => setLinkOpen(false)}
+        onSubmit={(url) => {
+          editorRef.current?.setLink(url.trim() || null);
+          setLinkOpen(false);
+        }}
+      />
     </View>
+  );
+}
+
+/** A small modal with a text field for entering a URL. */
+function UrlInput({
+  visible,
+  title,
+  placeholder,
+  onClose,
+  onSubmit,
+}: {
+  visible: boolean;
+  title: string;
+  placeholder: string;
+  onClose: () => void;
+  onSubmit: (value: string) => void;
+}) {
+  const [value, setValue] = useState('');
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <Pressable style={styles.backdrop} onPress={onClose}>
+        <Pressable style={styles.inputCard} onPress={() => {}}>
+          <Text style={styles.inputTitle}>{title}</Text>
+          <TextInput
+            autoFocus
+            value={value}
+            onChangeText={setValue}
+            placeholder={placeholder}
+            autoCapitalize="none"
+            autoCorrect={false}
+            keyboardType="url"
+            style={styles.input}
+          />
+          <View style={styles.inputActions}>
+            <TouchableOpacity accessibilityRole="button" onPress={() => { setValue(''); onSubmit(''); }}>
+              <Text style={styles.inputRemove}>Remove</Text>
+            </TouchableOpacity>
+            <View style={styles.inputActionsRight}>
+              <TouchableOpacity accessibilityRole="button" onPress={onClose}>
+                <Text style={styles.inputCancel}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity accessibilityRole="button" onPress={() => { onSubmit(value); setValue(''); }}>
+                <Text style={styles.inputOk}>OK</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Pressable>
+      </Pressable>
+    </Modal>
   );
 }
 
@@ -298,4 +408,36 @@ const styles = StyleSheet.create({
   menuLabel: { fontSize: 15, color: '#333' },
   swatchGrid: { flexDirection: 'row', flexWrap: 'wrap', width: 200, padding: 8, gap: 8 },
   swatch: { width: 28, height: 28, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, borderColor: '#0002' },
+  emojiGrid: { flexDirection: 'row', flexWrap: 'wrap', width: 220, padding: 8 },
+  emojiCell: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
+  emoji: { fontSize: 22 },
+  inputCard: {
+    position: 'absolute',
+    top: 120,
+    left: 24,
+    right: 24,
+    backgroundColor: '#fff',
+    borderRadius: 10,
+    padding: 16,
+    elevation: 6,
+    shadowColor: '#000',
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+  },
+  inputTitle: { fontSize: 15, fontWeight: '600', color: '#333', marginBottom: 8 },
+  input: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: '#aaa',
+    borderRadius: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    fontSize: 15,
+    color: '#111',
+  },
+  inputActions: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 12 },
+  inputActionsRight: { flexDirection: 'row', gap: 18 },
+  inputRemove: { color: '#D93025', fontSize: 15 },
+  inputCancel: { color: '#5F6368', fontSize: 15 },
+  inputOk: { color: '#1A73E8', fontSize: 15, fontWeight: '600' },
 });

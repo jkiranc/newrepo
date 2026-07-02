@@ -58,7 +58,17 @@ export interface RichTextEditorRef {
   setAlignment: (align: Alignment) => void;
   /** Set the selection's text color as `#RRGGBB`; pass null/'' to clear. */
   setTextColor: (color: string | null) => void;
+  /** Set the selection's link href; pass null/'' to remove the link. */
+  setLink: (url: string | null) => void;
+  /** Adjust the current paragraph's indent by `delta` (e.g. +1 / -1). */
+  adjustIndent: (delta: number) => void;
+  /** Insert plain text (e.g. an emoji) at the caret. */
+  insertText: (text: string) => void;
+  /** Insert an image embed by URL at the caret. */
+  insertImage: (src: string) => void;
   insertEmbed: (embed: EmbedPlaceholder) => void;
+  undo: () => void;
+  redo: () => void;
 }
 
 export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>(
@@ -77,22 +87,55 @@ export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>
     const nativeRef = useRef<React.ComponentRef<typeof RichTextEditorView>>(null);
     // Cache of the latest document so getHTML() is synchronous (no native round trip).
     const latestDoc = useRef<RichTextDocument>(EMPTY_DOCUMENT);
+    // Undo/redo history of serialized documents (no native undo API needed).
+    const history = useRef<string[]>([]);
+    const historyIndex = useRef(-1);
+    const isRestoring = useRef(false);
 
     const initialDocumentJson = useMemo(() => {
       const doc = initialHtml ? htmlToDocument(initialHtml, registry) : EMPTY_DOCUMENT;
       latestDoc.current = doc;
-      return JSON.stringify(doc);
+      const json = JSON.stringify(doc);
+      history.current = [json];
+      historyIndex.current = 0;
+      return json;
     }, [initialHtml, registry]);
 
     const handleDocumentChange = useCallback<NonNullable<NativeProps['onDocumentChange']>>(
       (event) => {
         try {
-          const doc = JSON.parse(event.nativeEvent.documentJson) as RichTextDocument;
+          const json = event.nativeEvent.documentJson;
+          const doc = JSON.parse(json) as RichTextDocument;
           latestDoc.current = doc;
+          if (isRestoring.current) {
+            isRestoring.current = false;
+          } else {
+            // Record a new history entry, discarding any redo tail, capped at 100.
+            const next = history.current.slice(0, historyIndex.current + 1);
+            next.push(json);
+            if (next.length > 100) {
+              next.shift();
+            }
+            history.current = next;
+            historyIndex.current = next.length - 1;
+          }
           onChangeHtml?.(documentToHtml(doc, registry));
         } catch {
           // Ignore malformed payloads rather than crashing the editor.
         }
+      },
+      [onChangeHtml, registry],
+    );
+
+    const restoreSnapshot = useCallback(
+      (json: string) => {
+        if (!nativeRef.current) {
+          return;
+        }
+        isRestoring.current = true;
+        latestDoc.current = JSON.parse(json) as RichTextDocument;
+        Commands.setDocument(nativeRef.current, json);
+        onChangeHtml?.(documentToHtml(latestDoc.current, registry));
       },
       [onChangeHtml, registry],
     );
@@ -157,11 +200,43 @@ export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>
           nativeRef.current && Commands.setAlignment(nativeRef.current, align),
         setTextColor: (color) =>
           nativeRef.current && Commands.setTextColor(nativeRef.current, color ?? ''),
+        setLink: (url) =>
+          nativeRef.current && Commands.setLink(nativeRef.current, url ?? ''),
+        adjustIndent: (delta) =>
+          nativeRef.current && Commands.adjustIndent(nativeRef.current, delta),
+        insertText: (text) =>
+          nativeRef.current && Commands.insertText(nativeRef.current, text),
+        insertImage: (src) => {
+          if (!nativeRef.current) {
+            return;
+          }
+          const embed: EmbedPlaceholder = {
+            id: `img-${Date.now()}`,
+            offset: 0,
+            tag: 'img',
+            kind: 'image',
+            src,
+            data: {},
+          };
+          Commands.insertEmbed(nativeRef.current, JSON.stringify(embed));
+        },
         insertEmbed: (embed) =>
           nativeRef.current &&
           Commands.insertEmbed(nativeRef.current, JSON.stringify(embed)),
+        undo: () => {
+          if (historyIndex.current > 0) {
+            historyIndex.current -= 1;
+            restoreSnapshot(history.current[historyIndex.current]);
+          }
+        },
+        redo: () => {
+          if (historyIndex.current < history.current.length - 1) {
+            historyIndex.current += 1;
+            restoreSnapshot(history.current[historyIndex.current]);
+          }
+        },
       }),
-      [registry],
+      [registry, restoreSnapshot],
     );
 
     return (

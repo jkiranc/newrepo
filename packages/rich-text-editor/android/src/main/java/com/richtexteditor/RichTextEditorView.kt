@@ -166,6 +166,47 @@ class RichTextEditorView(context: Context) : AppCompatEditText(context) {
     notifySelectionChange(selectionStart, selectionEnd)
   }
 
+  fun setLink(url: String) {
+    val editable = text ?: return
+    var start = selectionStart
+    var end = selectionEnd
+    if (end <= start && lastSelEnd > lastSelStart && lastSelEnd <= editable.length) {
+      start = lastSelStart
+      end = lastSelEnd
+    }
+    if (end <= start) return
+    suppressEvents = true
+    for (span in editable.getSpans(start, end, URLSpan::class.java)) {
+      val ss = editable.getSpanStart(span)
+      val se = editable.getSpanEnd(span)
+      val u = span.url
+      editable.removeSpan(span)
+      if (ss < start) editable.setSpan(URLSpan(u), ss, start, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+      if (se > end) editable.setSpan(URLSpan(u), end, se, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+    }
+    if (url.isNotEmpty()) {
+      editable.setSpan(URLSpan(url), start, end, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+    }
+    suppressEvents = false
+    emitDocumentChange()
+    setSelection(start, end)
+  }
+
+  fun adjustIndent(delta: Int) {
+    val editable = text ?: return
+    val (start, end) = currentParagraphRange(editable, toolbarCaret())
+    val existing = editable.getSpans(start, end, BlockTagSpan::class.java).firstOrNull()
+    val newIndent = ((existing?.indentLevel ?: 0) + delta).coerceIn(0, 8)
+    restyleParagraph(start, end, existing?.tag ?: "p", existing?.listType, newIndent, existing?.align)
+  }
+
+  fun insertText(textToInsert: String) {
+    val editable = text ?: return
+    val pos = selectionStart.coerceIn(0, editable.length)
+    editable.insert(pos, textToInsert) // TextWatcher emits the change
+    setSelection(pos + textToInsert.length)
+  }
+
   /** Remove block-level spans over a paragraph and re-apply styling for the given tag/align. */
   private fun restyleParagraph(start: Int, end: Int, tag: String, listType: String?, indentLevel: Int, align: String?) {
     val editable = text ?: return

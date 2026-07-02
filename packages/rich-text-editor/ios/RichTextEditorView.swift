@@ -163,6 +163,53 @@ public final class RichTextEditorViewImpl: NSObject, UITextViewDelegate {
         notifySelectionChange()
     }
 
+    @objc public func setLink(_ url: String) {
+        var selected = textView.selectedRange
+        let length = textView.attributedText?.length ?? 0
+        if selected.length == 0, lastSelection.length > 0, NSMaxRange(lastSelection) <= length {
+            selected = lastSelection
+        }
+        guard selected.length > 0 else { return }
+        let mutable = NSMutableAttributedString(attributedString: textView.attributedText ?? NSAttributedString())
+        if url.isEmpty {
+            mutable.removeAttribute(.link, range: selected)
+        } else if let parsed = URL(string: url) {
+            mutable.addAttribute(.link, value: parsed, range: selected)
+        }
+        textView.attributedText = mutable
+        textView.selectedRange = selected
+        emitDocumentChange()
+    }
+
+    @objc public func adjustIndent(_ delta: Int) {
+        guard let current = textView.attributedText else { return }
+        let range = (current.string as NSString).paragraphRange(for: textView.selectedRange)
+        guard range.length > 0 else { return }
+        let mutable = NSMutableAttributedString(attributedString: current)
+        let tag = mutable.attribute(.rteBlockTag, at: range.location, effectiveRange: nil) as? String ?? "p"
+        let listType = mutable.attribute(.rteListType, at: range.location, effectiveRange: nil) as? String
+        let align = mutable.attribute(.rteAlign, at: range.location, effectiveRange: nil) as? String
+        let currentIndent = mutable.attribute(.rteIndentLevel, at: range.location, effectiveRange: nil) as? Int ?? 0
+        let newIndent = max(0, min(8, currentIndent + delta))
+        let paragraph = SpanApplier.paragraphStyle(forTag: tag, listType: listType, indentLevel: newIndent, align: align)
+        mutable.addAttribute(.paragraphStyle, value: paragraph, range: range)
+        mutable.addAttribute(.rteIndentLevel, value: newIndent, range: range)
+        let selection = textView.selectedRange
+        textView.attributedText = mutable
+        textView.selectedRange = selection
+        emitDocumentChange()
+    }
+
+    @objc public func insertText(_ text: String) {
+        let mutable = NSMutableAttributedString(attributedString: textView.attributedText ?? NSAttributedString())
+        let piece = NSAttributedString(string: text, attributes: textView.typingAttributes)
+        let loc = min(textView.selectedRange.location, mutable.length)
+        mutable.insert(piece, at: loc)
+        textView.attributedText = mutable
+        textView.selectedRange = NSRange(location: loc + (text as NSString).length, length: 0)
+        emitDocumentChange()
+    }
+
     @objc public func insertEmbedJSON(_ json: String) {
         guard let data = json.data(using: .utf8),
               let embed = try? JSONDecoder().decode(EmbedPlaceholder.self, from: data) else { return }

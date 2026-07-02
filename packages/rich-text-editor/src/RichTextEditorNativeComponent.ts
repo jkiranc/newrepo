@@ -60,6 +60,21 @@ interface NativeCommands {
     viewRef: React.ElementRef<HostComponent<NativeProps>>,
     color: string,
   ) => void;
+  /** Set the selection's link href (empty string removes the link). */
+  setLink: (
+    viewRef: React.ElementRef<HostComponent<NativeProps>>,
+    url: string,
+  ) => void;
+  /** Adjust the current paragraph's indent level by `delta` (e.g. +1 or -1). */
+  adjustIndent: (
+    viewRef: React.ElementRef<HostComponent<NativeProps>>,
+    delta: Int32,
+  ) => void;
+  /** Insert plain text (e.g. an emoji) at the caret. */
+  insertText: (
+    viewRef: React.ElementRef<HostComponent<NativeProps>>,
+    text: string,
+  ) => void;
   /** Insert a serialized {@link EmbedPlaceholder} at the current caret position. */
   insertEmbed: (
     viewRef: React.ElementRef<HostComponent<NativeProps>>,
@@ -76,6 +91,9 @@ export const Commands: NativeCommands = codegenNativeCommands<NativeCommands>({
     'setBlockType',
     'setAlignment',
     'setTextColor',
+    'setLink',
+    'adjustIndent',
+    'insertText',
     'insertEmbed',
   ],
 });

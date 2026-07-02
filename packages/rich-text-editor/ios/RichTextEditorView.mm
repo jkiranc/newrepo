@@ -87,6 +87,9 @@ using namespace facebook::react;
 - (void)setBlockType:(NSString *)tag { [_impl setBlockType:tag]; }
 - (void)setAlignment:(NSString *)align { [_impl setAlignment:align]; }
 - (void)setTextColor:(NSString *)color { [_impl setTextColor:color]; }
+- (void)setLink:(NSString *)url { [_impl setLink:url]; }
+- (void)adjustIndent:(NSInteger)delta { [_impl adjustIndent:delta]; }
+- (void)insertText:(NSString *)text { [_impl insertText:text]; }
 - (void)insertEmbed:(NSString *)embedJson { [_impl insertEmbedJSON:embedJson]; }
 
 // Event emitters.

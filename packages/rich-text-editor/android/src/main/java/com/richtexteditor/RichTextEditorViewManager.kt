@@ -94,6 +94,18 @@ class RichTextEditorViewManager :
     view.setTextColor(color ?: "")
   }
 
+  override fun setLink(view: RichTextEditorView, url: String?) {
+    view.setLink(url ?: "")
+  }
+
+  override fun adjustIndent(view: RichTextEditorView, delta: Int) {
+    view.adjustIndent(delta)
+  }
+
+  override fun insertText(view: RichTextEditorView, text: String?) {
+    text?.let { view.insertText(it) }
+  }
+
   override fun insertEmbed(view: RichTextEditorView, embedJson: String?) {
     embedJson?.let { view.insertEmbed(it) }
   }
