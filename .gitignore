@@ -1,0 +1,45 @@
+# dependencies
+node_modules/
+.yarn/
+.pnp.*
+
+# build output
+lib/
+dist/
+build/
+*.tsbuildinfo
+
+# native
+ios/Pods/
+ios/build/
+android/.gradle/
+android/build/
+android/app/build/
+*.xcworkspace/xcuserdata/
+.cxx/
+DerivedData/
+*.keystore
+!debug.keystore
+
+# codegen output (regenerated on build)
+**/generated/**
+
+# metro / RN
+.metro-health-check*
+.expo/
+
+# logs
+*.log
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+
+# testing
+coverage/
+
+# misc / editor
+.DS_Store
+.env
+.idea/
+.vscode/
+*.swp

@@ -1,0 +1,17 @@
+{
+  "name": "react-native-fabric-rich-text-monorepo",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Monorepo for react-native-fabric-rich-text: an extensible, native (Fabric) rich-text editor for React Native.",
+  "workspaces": [
+    "packages/*",
+    "example"
+  ],
+  "scripts": {
+    "test": "yarn workspace react-native-fabric-rich-text test",
+    "typecheck": "yarn workspace react-native-fabric-rich-text typecheck",
+    "lint": "yarn workspace react-native-fabric-rich-text lint",
+    "build": "yarn workspace react-native-fabric-rich-text prepare"
+  },
+  "license": "MIT"
+}
