@@ -48,6 +48,10 @@ class RichTextEditorView(context: Context) : AppCompatEditText(context) {
   private var pendingColor: String? = null
   private var lastInsertStart = -1
   private var lastInsertCount = 0
+  // Last non-empty selection, so toolbar popovers (which steal focus and collapse the
+  // selection) can still apply to the range the user had highlighted.
+  private var lastSelStart = 0
+  private var lastSelEnd = 0
 
   // AppCompatEditText's constructor calls setText, which fires onSelectionChanged before this
   // class's fields are initialized. Guard callbacks until construction finishes to avoid NPEs.
@@ -109,24 +113,35 @@ class RichTextEditorView(context: Context) : AppCompatEditText(context) {
     notifySelectionChange(start, end)
   }
 
+  /** Caret to use for block-level toolbar ops, tolerant of a popover collapsing the selection. */
+  private fun toolbarCaret(): Int {
+    val s = selectionStart
+    return if (s <= 0 && lastSelEnd > lastSelStart) lastSelStart else s
+  }
+
   fun setBlockType(tag: String) {
     val editable = text ?: return
-    val (start, end) = currentParagraphRange(editable, selectionStart)
+    val (start, end) = currentParagraphRange(editable, toolbarCaret())
     val existing = editable.getSpans(start, end, BlockTagSpan::class.java).firstOrNull()
     restyleParagraph(start, end, tag, existing?.listType, existing?.indentLevel ?: 0, existing?.align)
   }
 
   fun setAlignment(align: String) {
     val editable = text ?: return
-    val (start, end) = currentParagraphRange(editable, selectionStart)
+    val (start, end) = currentParagraphRange(editable, toolbarCaret())
     val existing = editable.getSpans(start, end, BlockTagSpan::class.java).firstOrNull()
     restyleParagraph(start, end, existing?.tag ?: "p", existing?.listType, existing?.indentLevel ?: 0, align)
   }
 
   fun setTextColor(color: String) {
     val editable = text ?: return
-    val start = selectionStart
-    val end = selectionEnd
+    var start = selectionStart
+    var end = selectionEnd
+    if (end <= start && lastSelEnd > lastSelStart && lastSelEnd <= editable.length) {
+      // The popover collapsed the live selection; fall back to the last highlighted range.
+      start = lastSelStart
+      end = lastSelEnd
+    }
     if (end > start) {
       suppressEvents = true
       // Remove existing color spans in range, preserving the portions outside it.
@@ -209,6 +224,10 @@ class RichTextEditorView(context: Context) : AppCompatEditText(context) {
       pendingStyles.clear()
       pendingStyles.addAll(stylesAt(selStart))
       pendingColor = null
+    } else {
+      // Remember the real range so a focus-stealing popover can still target it.
+      lastSelStart = selStart
+      lastSelEnd = selEnd
     }
     notifySelectionChange(selStart, selEnd)
   }

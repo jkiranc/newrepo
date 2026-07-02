@@ -21,6 +21,9 @@ public final class RichTextEditorViewImpl: NSObject, UITextViewDelegate {
     private var document = RichTextDocument(blocks: [])
     private var didSeedInitialDocument = false
     private var changeDebounce: DispatchWorkItem?
+    // Last non-empty selection, so a toolbar popover that resigns first responder can still
+    // target the range the user had highlighted.
+    private var lastSelection = NSRange(location: 0, length: 0)
 
     @objc public override init() {
         textView = UITextView(frame: .zero)
@@ -133,7 +136,11 @@ public final class RichTextEditorViewImpl: NSObject, UITextViewDelegate {
     }
 
     @objc public func setTextColor(_ color: String) {
-        let selected = textView.selectedRange
+        var selected = textView.selectedRange
+        let length = textView.attributedText?.length ?? 0
+        if selected.length == 0, lastSelection.length > 0, NSMaxRange(lastSelection) <= length {
+            selected = lastSelection
+        }
         if selected.length > 0 {
             let mutable = NSMutableAttributedString(attributedString: textView.attributedText ?? NSAttributedString())
             if color.isEmpty {
@@ -311,6 +318,9 @@ public final class RichTextEditorViewImpl: NSObject, UITextViewDelegate {
 
     private func notifySelectionChange() {
         let range = textView.selectedRange
+        if range.length > 0 {
+            lastSelection = range
+        }
         onSelectionChangeBlock?(
             currentBlockId(for: range),
             range.location,
