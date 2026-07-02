@@ -1,0 +1,109 @@
+name: Android APK
+
+# Builds a standalone (JS-bundled, debug-signed) release APK you can sideload onto a real
+# device. It generates a fresh RN host app, links this library into it via a file: dependency
+# so autolinking + Fabric codegen pick it up, then assembles a release APK and uploads it as a
+# downloadable artifact.
+#
+# Trigger manually from the Actions tab (workflow_dispatch) or on pushes that touch the library.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["claude/**", main]
+    paths:
+      - "packages/rich-text-editor/**"
+      - "example/**"
+      - ".github/workflows/android-apk.yml"
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+    env:
+      RN_VERSION: "0.76.0"
+      HOST_DIR: host
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Generate React Native host app
+        run: |
+          npx --yes @react-native-community/cli@${RN_VERSION} init RTEHost \
+            --version ${RN_VERSION} \
+            --directory ${HOST_DIR} \
+            --skip-install \
+            --skip-git-init \
+            --pm npm
+
+      - name: Overlay example JS and link the library
+        run: |
+          # Replace the host's App with our example and bring in the demo screens.
+          cp example/App.tsx ${HOST_DIR}/App.tsx
+          rm -rf ${HOST_DIR}/src
+          cp -R example/src ${HOST_DIR}/src
+          # Link the local library so autolinking + codegen discover it.
+          ( cd ${HOST_DIR} && npm pkg set dependencies.react-native-fabric-rich-text="file:../packages/rich-text-editor" )
+          # Force the New Architecture on (RN 0.76 default, set explicitly to be safe).
+          echo "newArchEnabled=true" >> ${HOST_DIR}/android/gradle.properties
+          # Build a single ABI first to keep the initial build fast.
+          echo "reactNativeArchitectures=arm64-v8a" >> ${HOST_DIR}/android/gradle.properties
+
+      - name: Install dependencies
+        working-directory: ${{ env.HOST_DIR }}
+        # --ignore-scripts skips the library's `prepare` (bob build); the Android build runs
+        # Fabric codegen itself, so a prebuilt lib is not needed.
+        run: npm install --ignore-scripts --no-audit --no-fund
+
+      - name: Sign release with the debug keystore
+        run: |
+          # Make the release build self-signed with the bundled debug keystore so the APK
+          # installs on a device without configuring real release signing.
+          cat >> ${HOST_DIR}/android/app/build.gradle <<'GRADLE'
+
+          android {
+              signingConfigs {
+                  release {
+                      storeFile file('debug.keystore')
+                      storePassword 'android'
+                      keyAlias 'androiddebugkey'
+                      keyPassword 'android'
+                  }
+              }
+              buildTypes {
+                  release {
+                      signingConfig signingConfigs.release
+                  }
+              }
+          }
+          GRADLE
+
+      - name: Build release APK
+        working-directory: ${{ env.HOST_DIR }}/android
+        run: ./gradlew assembleRelease --no-daemon --stacktrace
+
+      - name: Upload APK
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rich-text-editor-example-apk
+          path: ${{ env.HOST_DIR }}/android/app/build/outputs/apk/release/*.apk
+          if-no-files-found: error
+
+      - name: Upload Gradle reports on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gradle-reports
+          path: |
+            ${{ env.HOST_DIR }}/android/**/build/reports/**
+          if-no-files-found: ignore
