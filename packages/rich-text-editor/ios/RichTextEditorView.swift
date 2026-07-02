@@ -95,12 +95,13 @@ public final class RichTextEditorViewImpl: NSObject, UITextViewDelegate {
         notifySelectionChange()
     }
 
-    /// Re-style a paragraph for a new block tag, preserving inline traits (bold/italic) while
-    /// swapping the base font, and stamp the tag so reconstruction recovers it.
+    /// Re-style a paragraph for a new block tag, preserving inline traits (bold/italic) and the
+    /// existing alignment while swapping the base font; stamp the tag so reconstruction recovers it.
     private func applyBlockStyle(tag: String, to string: NSMutableAttributedString, range: NSRange) {
         guard range.length > 0 else { return }
         let baseFont = SpanApplier.font(forTag: tag)
-        let paragraph = SpanApplier.paragraphStyle(forTag: tag, listType: nil, indentLevel: nil)
+        let align = string.attribute(.rteAlign, at: range.location, effectiveRange: nil) as? String
+        let paragraph = SpanApplier.paragraphStyle(forTag: tag, listType: nil, indentLevel: nil, align: align)
         string.enumerateAttribute(.font, in: range) { value, sub, _ in
             let traits = (value as? UIFont)?.fontDescriptor.symbolicTraits ?? []
             var font = baseFont
@@ -111,6 +112,48 @@ public final class RichTextEditorViewImpl: NSObject, UITextViewDelegate {
         }
         string.addAttribute(.paragraphStyle, value: paragraph, range: range)
         string.addAttribute(.rteBlockTag, value: tag, range: range)
+    }
+
+    @objc public func setAlignment(_ align: String) {
+        guard let current = textView.attributedText else { return }
+        let range = (current.string as NSString).paragraphRange(for: textView.selectedRange)
+        guard range.length > 0 else { return }
+        let mutable = NSMutableAttributedString(attributedString: current)
+        let tag = mutable.attribute(.rteBlockTag, at: range.location, effectiveRange: nil) as? String ?? "p"
+        let listType = mutable.attribute(.rteListType, at: range.location, effectiveRange: nil) as? String
+        let indent = mutable.attribute(.rteIndentLevel, at: range.location, effectiveRange: nil) as? Int
+        let paragraph = SpanApplier.paragraphStyle(forTag: tag, listType: listType, indentLevel: indent, align: align)
+        mutable.addAttribute(.paragraphStyle, value: paragraph, range: range)
+        mutable.addAttribute(.rteAlign, value: align, range: range)
+        let selection = textView.selectedRange
+        textView.attributedText = mutable
+        textView.selectedRange = selection
+        emitDocumentChange()
+        notifySelectionChange()
+    }
+
+    @objc public func setTextColor(_ color: String) {
+        let selected = textView.selectedRange
+        if selected.length > 0 {
+            let mutable = NSMutableAttributedString(attributedString: textView.attributedText ?? NSAttributedString())
+            if color.isEmpty {
+                mutable.removeAttribute(.foregroundColor, range: selected)
+            } else if let uiColor = UIColor(hex: color) {
+                mutable.addAttribute(.foregroundColor, value: uiColor, range: selected)
+            }
+            textView.attributedText = mutable
+            textView.selectedRange = selected
+            emitDocumentChange()
+        } else {
+            var attrs = textView.typingAttributes
+            if color.isEmpty {
+                attrs.removeValue(forKey: .foregroundColor)
+            } else if let uiColor = UIColor(hex: color) {
+                attrs[.foregroundColor] = uiColor
+            }
+            textView.typingAttributes = attrs
+        }
+        notifySelectionChange()
     }
 
     @objc public func insertEmbedJSON(_ json: String) {
@@ -203,12 +246,14 @@ public final class RichTextEditorViewImpl: NSObject, UITextViewDelegate {
         var listType: String?
         var listDepth: Int?
         var indentLevel: Int?
+        var align: String?
 
         if range.length > 0 {
             blockTag = attributed.attribute(.rteBlockTag, at: range.location, effectiveRange: nil) as? String ?? "p"
             listType = attributed.attribute(.rteListType, at: range.location, effectiveRange: nil) as? String
             listDepth = attributed.attribute(.rteListDepth, at: range.location, effectiveRange: nil) as? Int
             indentLevel = attributed.attribute(.rteIndentLevel, at: range.location, effectiveRange: nil) as? Int
+            align = attributed.attribute(.rteAlign, at: range.location, effectiveRange: nil) as? String
 
             attributed.enumerateAttributes(in: range) { attrs, r, _ in
                 let rel = NSRange(location: r.location - range.location, length: r.length)
@@ -232,7 +277,7 @@ public final class RichTextEditorViewImpl: NSObject, UITextViewDelegate {
         return BlockNode(
             id: id, tag: blockTag, text: paragraphText, styleRuns: runs,
             listType: listType, listDepth: listDepth, indentLevel: indentLevel,
-            embeds: embeds.isEmpty ? nil : embeds
+            align: align, embeds: embeds.isEmpty ? nil : embeds
         )
     }
 
@@ -247,6 +292,12 @@ public final class RichTextEditorViewImpl: NSObject, UITextViewDelegate {
         if attrs[.underlineStyle] != nil { run.underline = true; styled = true }
         if attrs[.strikethroughStyle] != nil { run.strikethrough = true; styled = true }
         if attrs[.link] != nil, let url = attrs[.link] as? URL { run.link = url.absoluteString; styled = true }
+        if let color = attrs[.foregroundColor] as? UIColor, let hex = color.rteHexString {
+            run.color = hex; styled = true
+        }
+        if let bg = attrs[.backgroundColor] as? UIColor, let hex = bg.rteHexString {
+            run.backgroundColor = hex; styled = true
+        }
         return styled ? run : nil
     }
 

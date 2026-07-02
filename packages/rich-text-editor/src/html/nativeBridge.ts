@@ -1,5 +1,6 @@
 import {
   OBJECT_REPLACEMENT_CHAR,
+  type Alignment,
   type BlockNode,
   type EmbedPlaceholder,
   type ListType,
@@ -7,6 +8,7 @@ import {
   type StyleRun,
 } from '../types/nativeTypes';
 import { defaultTagRegistry, TagRegistry } from '../registry/TagRegistry';
+import { parseInlineStyle } from '../registry/builtInTags';
 // Side-effect import: ensures the built-in tags are installed on `defaultTagRegistry`
 // whenever the bridge is used, even if the consumer never imports the package index.
 import '../registry/builtInTags';
@@ -97,6 +99,7 @@ interface BlockBuilder {
   listDepth?: number;
   listIndex?: number;
   indentLevel?: number;
+  align?: Alignment;
   spacingBefore?: number;
   spacingAfter?: number;
   data?: Record<string, string>;
@@ -112,6 +115,9 @@ function newBlock(ids: IdCounter, partial: Partial<BlockNode>): BlockBuilder {
   };
   if (partial.indentLevel !== undefined) {
     b.indentLevel = partial.indentLevel;
+  }
+  if (partial.align !== undefined) {
+    b.align = partial.align;
   }
   if (partial.spacingBefore !== undefined) {
     b.spacingBefore = partial.spacingBefore;
@@ -144,6 +150,9 @@ function finalize(b: BlockBuilder): BlockNode {
   }
   if (b.indentLevel !== undefined) {
     node.indentLevel = b.indentLevel;
+  }
+  if (b.align !== undefined) {
+    node.align = b.align;
   }
   if (b.spacingBefore !== undefined) {
     node.spacingBefore = b.spacingBefore;
@@ -286,6 +295,16 @@ function emptyStyle(): RunStyle {
   return { tag: '' };
 }
 
+/** Read a `text-align` value (from the `style` attr or `align` attr) into an Alignment. */
+function alignmentFromAttrs(attrs: Record<string, string>): Alignment | undefined {
+  const css = parseInlineStyle(attrs.style);
+  const value = (css['text-align'] ?? attrs.align ?? '').toLowerCase();
+  if (value === 'center' || value === 'right' || value === 'justify' || value === 'left') {
+    return value;
+  }
+  return undefined;
+}
+
 /** Walk block-level flow, grouping loose inline content into implicit paragraphs. */
 function processFlow(
   nodes: HtmlNode[],
@@ -321,6 +340,10 @@ function processFlow(
     if (def?.category === 'block') {
       flush();
       const b = newBlock(ids, def.toBlock?.(node.attrs) ?? { tag: node.tag });
+      const align = alignmentFromAttrs(node.attrs);
+      if (align) {
+        b.align = align;
+      }
       processInline(node.children, b, registry, emptyStyle(), ids);
       blocks.push(finalize(b));
       continue;

@@ -58,6 +58,17 @@ describe('documentToHtml', () => {
     expect(roundTrip('<p>a<br>b</p>')).toBe('<p>a<br />b</p>');
   });
 
+  it('serializes and round-trips paragraph alignment', () => {
+    expect(roundTrip('<p style="text-align: center">hi</p>')).toBe(
+      '<p style="text-align: center">hi</p>',
+    );
+    expect(roundTrip('<h1 style="text-align: right">t</h1>')).toBe(
+      '<h1 style="text-align: right">t</h1>',
+    );
+    // Left alignment is the default and should not emit a style.
+    expect(roundTrip('<p style="text-align: left">hi</p>')).toBe('<p>hi</p>');
+  });
+
   it('coalesces fragmented per-character runs from native reconstruction', () => {
     // Android applies a span per typed character, so onDocumentChange emits one run per char.
     // The serializer must merge them into a single tag rather than one tag per character.

@@ -6,6 +6,7 @@ import android.text.InputType
 import android.text.Spannable
 import android.text.TextWatcher
 import android.view.Gravity
+import android.text.style.AlignmentSpan
 import android.text.style.ForegroundColorSpan
 import android.text.style.LeadingMarginSpan
 import android.text.style.RelativeSizeSpan
@@ -44,6 +45,7 @@ class RichTextEditorView(context: Context) : AppCompatEditText(context) {
 
   // Collapsed-caret styling: styles to apply to the next typed characters.
   private val pendingStyles = mutableSetOf<InlineStyle>()
+  private var pendingColor: String? = null
   private var lastInsertStart = -1
   private var lastInsertCount = 0
 
@@ -110,15 +112,56 @@ class RichTextEditorView(context: Context) : AppCompatEditText(context) {
   fun setBlockType(tag: String) {
     val editable = text ?: return
     val (start, end) = currentParagraphRange(editable, selectionStart)
+    val existing = editable.getSpans(start, end, BlockTagSpan::class.java).firstOrNull()
+    restyleParagraph(start, end, tag, existing?.listType, existing?.indentLevel ?: 0, existing?.align)
+  }
+
+  fun setAlignment(align: String) {
+    val editable = text ?: return
+    val (start, end) = currentParagraphRange(editable, selectionStart)
+    val existing = editable.getSpans(start, end, BlockTagSpan::class.java).firstOrNull()
+    restyleParagraph(start, end, existing?.tag ?: "p", existing?.listType, existing?.indentLevel ?: 0, align)
+  }
+
+  fun setTextColor(color: String) {
+    val editable = text ?: return
+    val start = selectionStart
+    val end = selectionEnd
+    if (end > start) {
+      suppressEvents = true
+      // Remove existing color spans in range, preserving the portions outside it.
+      for (span in editable.getSpans(start, end, ForegroundColorSpan::class.java)) {
+        val ss = editable.getSpanStart(span)
+        val se = editable.getSpanEnd(span)
+        val c = span.foregroundColor
+        editable.removeSpan(span)
+        if (ss < start) editable.setSpan(ForegroundColorSpan(c), ss, start, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+        if (se > end) editable.setSpan(ForegroundColorSpan(c), end, se, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+      }
+      if (color.isNotEmpty()) {
+        SpanApplier.parseColor(color)?.let {
+          editable.setSpan(ForegroundColorSpan(it), start, end, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+        }
+      }
+      suppressEvents = false
+      emitDocumentChange()
+    } else {
+      pendingColor = if (color.isEmpty()) null else color
+    }
+    notifySelectionChange(selectionStart, selectionEnd)
+  }
+
+  /** Remove block-level spans over a paragraph and re-apply styling for the given tag/align. */
+  private fun restyleParagraph(start: Int, end: Int, tag: String, listType: String?, indentLevel: Int, align: String?) {
+    val editable = text ?: return
     suppressEvents = true
-    // Remove existing block-level spans over the paragraph before restyling (inline spans stay).
     for (span in editable.getSpans(start, end, Any::class.java)) {
       when (span) {
-        is RelativeSizeSpan, is TypefaceSpan, is LeadingMarginSpan, is BlockTagSpan ->
+        is RelativeSizeSpan, is TypefaceSpan, is LeadingMarginSpan, is AlignmentSpan, is BlockTagSpan ->
           editable.removeSpan(span)
       }
     }
-    SpanApplier.styleBlock(editable, start, end, tag, null, 0, resources.displayMetrics.density)
+    SpanApplier.styleBlock(editable, start, end, tag, listType, indentLevel, align, resources.displayMetrics.density)
     suppressEvents = false
     emitDocumentChange()
     notifySelectionChange(selectionStart, selectionEnd)
@@ -165,6 +208,7 @@ class RichTextEditorView(context: Context) : AppCompatEditText(context) {
       // Caret moved: refresh pending styles from what's active just before the caret.
       pendingStyles.clear()
       pendingStyles.addAll(stylesAt(selStart))
+      pendingColor = null
     }
     notifySelectionChange(selStart, selEnd)
   }
@@ -173,12 +217,17 @@ class RichTextEditorView(context: Context) : AppCompatEditText(context) {
 
   private fun applyPendingStyles() {
     val editable = text ?: return
-    if (pendingStyles.isEmpty() || lastInsertCount <= 0) return
+    if ((pendingStyles.isEmpty() && pendingColor == null) || lastInsertCount <= 0) return
     val start = lastInsertStart
     val end = minOf(editable.length, start + lastInsertCount)
     if (end <= start) return
     suppressEvents = true
     for (style in pendingStyles) StyleEngine.setStyle(style, true, editable, start, end)
+    pendingColor?.let { hex ->
+      SpanApplier.parseColor(hex)?.let {
+        editable.setSpan(ForegroundColorSpan(it), start, end, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+      }
+    }
     suppressEvents = false
     lastInsertCount = 0
   }
@@ -236,11 +285,13 @@ class RichTextEditorView(context: Context) : AppCompatEditText(context) {
     var tag = "p"
     var listType: String? = null
     var indentLevel = 0
+    var align: String? = null
     if (end > start) {
       editable.getSpans(start, end, BlockTagSpan::class.java).firstOrNull()?.let {
         tag = it.tag
         listType = it.listType
         indentLevel = it.indentLevel
+        align = it.align
       }
     }
 
@@ -251,6 +302,7 @@ class RichTextEditorView(context: Context) : AppCompatEditText(context) {
       .put("styleRuns", runs)
     listType?.let { block.put("listType", it).put("listDepth", 0) }
     if (indentLevel > 0) block.put("indentLevel", indentLevel)
+    align?.let { block.put("align", it) }
 
     // Recover embeds from their chip spans (offsets relative to the paragraph).
     val embeds = JSONArray()

@@ -50,6 +50,16 @@ interface NativeCommands {
     viewRef: React.ElementRef<HostComponent<NativeProps>>,
     tag: string,
   ) => void;
+  /** Set the current paragraph's alignment ('left' | 'center' | 'right' | 'justify'). */
+  setAlignment: (
+    viewRef: React.ElementRef<HostComponent<NativeProps>>,
+    align: string,
+  ) => void;
+  /** Set the selection's text color as `#RRGGBB` (empty string clears it). */
+  setTextColor: (
+    viewRef: React.ElementRef<HostComponent<NativeProps>>,
+    color: string,
+  ) => void;
   /** Insert a serialized {@link EmbedPlaceholder} at the current caret position. */
   insertEmbed: (
     viewRef: React.ElementRef<HostComponent<NativeProps>>,
@@ -64,6 +74,8 @@ export const Commands: NativeCommands = codegenNativeCommands<NativeCommands>({
     'blur',
     'toggleInlineStyle',
     'setBlockType',
+    'setAlignment',
+    'setTextColor',
     'insertEmbed',
   ],
 });

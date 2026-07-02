@@ -8,4 +8,5 @@ class BlockTagSpan(
   val listType: String? = null,
   val listDepth: Int = 0,
   val indentLevel: Int = 0,
+  val align: String? = null,
 )

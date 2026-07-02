@@ -86,6 +86,14 @@ class RichTextEditorViewManager :
     tag?.let { view.setBlockType(it) }
   }
 
+  override fun setAlignment(view: RichTextEditorView, align: String?) {
+    align?.let { view.setAlignment(it) }
+  }
+
+  override fun setTextColor(view: RichTextEditorView, color: String?) {
+    view.setTextColor(color ?: "")
+  }
+
   override fun insertEmbed(view: RichTextEditorView, embedJson: String?) {
     embedJson?.let { view.insertEmbed(it) }
   }

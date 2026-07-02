@@ -16,6 +16,7 @@ import { documentToHtml } from './html/serializer';
 import { defaultTagRegistry, TagRegistry } from './registry/TagRegistry';
 import {
   EMPTY_DOCUMENT,
+  type Alignment,
   type EmbedPlaceholder,
   type InlineStyleName,
   type RichTextDocument,
@@ -54,6 +55,9 @@ export interface RichTextEditorRef {
   toggleUnderline: () => void;
   toggleStrikethrough: () => void;
   setBlockType: (tag: string) => void;
+  setAlignment: (align: Alignment) => void;
+  /** Set the selection's text color as `#RRGGBB`; pass null/'' to clear. */
+  setTextColor: (color: string | null) => void;
   insertEmbed: (embed: EmbedPlaceholder) => void;
 }
 
@@ -149,6 +153,10 @@ export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>
           Commands.toggleInlineStyle(nativeRef.current, 'strikethrough'),
         setBlockType: (tag) =>
           nativeRef.current && Commands.setBlockType(nativeRef.current, tag),
+        setAlignment: (align) =>
+          nativeRef.current && Commands.setAlignment(nativeRef.current, align),
+        setTextColor: (color) =>
+          nativeRef.current && Commands.setTextColor(nativeRef.current, color ?? ''),
         insertEmbed: (embed) =>
           nativeRef.current &&
           Commands.insertEmbed(nativeRef.current, JSON.stringify(embed)),

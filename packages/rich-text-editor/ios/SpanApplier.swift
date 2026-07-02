@@ -50,6 +50,7 @@ struct BlockNode: Codable {
     var listDepth: Int? = nil
     var listIndex: Int? = nil
     var indentLevel: Int? = nil
+    var align: String? = nil
     var embeds: [EmbedPlaceholder]? = nil
 }
 
@@ -81,7 +82,7 @@ enum SpanApplier {
     /// Build the attributed string for a single block, applying its style runs.
     static func attributedString(for block: BlockNode) -> NSAttributedString {
         let baseFont = font(forTag: block.tag)
-        let paragraph = paragraphStyle(forTag: block.tag, listType: block.listType, indentLevel: block.indentLevel)
+        let paragraph = paragraphStyle(forTag: block.tag, listType: block.listType, indentLevel: block.indentLevel, align: block.align)
         let attributed = NSMutableAttributedString(
             string: block.text,
             attributes: [.font: baseFont, .paragraphStyle: paragraph]
@@ -112,6 +113,9 @@ enum SpanApplier {
             }
             if let indent = block.indentLevel {
                 attributed.addAttribute(.rteIndentLevel, value: indent, range: whole)
+            }
+            if let align = block.align {
+                attributed.addAttribute(.rteAlign, value: align, range: whole)
             }
         }
         return attributed
@@ -170,7 +174,7 @@ enum SpanApplier {
         }
     }
 
-    static func paragraphStyle(forTag tag: String, listType: String?, indentLevel: Int?) -> NSParagraphStyle {
+    static func paragraphStyle(forTag tag: String, listType: String?, indentLevel: Int?, align: String? = nil) -> NSParagraphStyle {
         let style = NSMutableParagraphStyle()
         let listIndent = (listType != nil && listType != "none") ? 1 : 0
         let blockquoteIndent = tag == "blockquote" ? 1 : 0
@@ -178,6 +182,12 @@ enum SpanApplier {
         style.firstLineHeadIndent = indent
         style.headIndent = indent
         style.paragraphSpacing = 8
+        switch align {
+        case "center": style.alignment = .center
+        case "right": style.alignment = .right
+        case "justify": style.alignment = .justified
+        default: style.alignment = .natural
+        }
         return style
     }
 
@@ -196,9 +206,19 @@ extension NSAttributedString.Key {
     static let rteListType = NSAttributedString.Key("rteListType")
     static let rteListDepth = NSAttributedString.Key("rteListDepth")
     static let rteIndentLevel = NSAttributedString.Key("rteIndentLevel")
+    static let rteAlign = NSAttributedString.Key("rteAlign")
 }
 
 extension UIColor {
+    /// `#RRGGBB` for this color (used to round-trip text color back to HTML), or nil if it has
+    /// no RGB representation.
+    var rteHexString: String? {
+        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        guard getRed(&r, green: &g, blue: &b, alpha: &a) else { return nil }
+        let ri = Int(round(r * 255)), gi = Int(round(g * 255)), bi = Int(round(b * 255))
+        return String(format: "#%02X%02X%02X", ri, gi, bi)
+    }
+
     /// Parse `#RGB`, `#RRGGBB`, or `#RRGGBBAA`.
     convenience init?(hex: String) {
         var hex = hex.trimmingCharacters(in: .whitespaces)

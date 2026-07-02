@@ -41,6 +41,8 @@ export interface StyleRun {
 
 export type ListType = 'none' | 'bullet' | 'ordered';
 
+export type Alignment = 'left' | 'center' | 'right' | 'justify';
+
 /**
  * A block-level container (paragraph, heading, list item, blockquote, code block, or a
  * custom block tag). Blocks are flat — nesting (e.g. lists) is expressed via
@@ -59,6 +61,8 @@ export interface BlockNode {
   /** 1-based ordinal for ordered lists. */
   listIndex?: number;
   indentLevel?: number;
+  /** Paragraph text alignment. */
+  align?: Alignment;
   spacingBefore?: number;
   spacingAfter?: number;
   /** Embeds positioned at the {@link OBJECT_REPLACEMENT_CHAR} offsets within `text`. */

@@ -2,10 +2,12 @@ package com.richtexteditor
 
 import android.graphics.Color
 import android.graphics.Typeface
+import android.text.Layout
 import android.text.Spannable
 import android.text.SpannableStringBuilder
 import android.text.Spanned
 import android.text.style.AbsoluteSizeSpan
+import android.text.style.AlignmentSpan
 import android.text.style.BackgroundColorSpan
 import android.text.style.ForegroundColorSpan
 import android.text.style.LeadingMarginSpan
@@ -50,7 +52,8 @@ object SpanApplier {
     val tag = block.optString("tag", "p")
     val listType = if (block.has("listType")) block.optString("listType") else null
     val indentLevel = block.optInt("indentLevel", 0)
-    styleBlock(builder, start, end, tag, listType, indentLevel, density)
+    val align = if (block.has("align")) block.optString("align") else null
+    styleBlock(builder, start, end, tag, listType, indentLevel, align, density)
 
     val runs = block.optJSONArray("styleRuns") ?: JSONArray()
     for (i in 0 until runs.length()) {
@@ -85,6 +88,7 @@ object SpanApplier {
     tag: String,
     listType: String?,
     indentLevel: Int,
+    align: String?,
     density: Float,
   ) {
     if (end < start) return
@@ -94,6 +98,7 @@ object SpanApplier {
       "h3" -> 1.4f
       "h4" -> 1.2f
       "h5" -> 1.1f
+      "h6" -> 1.0f
       else -> null
     }
     if (headingScale != null && end > start) {
@@ -108,8 +113,17 @@ object SpanApplier {
       val marginPx = (indentLevels * 20 * density).toInt()
       builder.setSpan(LeadingMarginSpan.Standard(marginPx), start, end, Spanned.SPAN_INCLUSIVE_INCLUSIVE)
     }
+    // Paragraph alignment. Android's AlignmentSpan has no justify; treat it as normal (left).
+    val alignment = when (align) {
+      "center" -> Layout.Alignment.ALIGN_CENTER
+      "right" -> Layout.Alignment.ALIGN_OPPOSITE
+      else -> null
+    }
+    if (alignment != null && end > start) {
+      builder.setSpan(AlignmentSpan.Standard(alignment), start, end, Spanned.SPAN_INCLUSIVE_INCLUSIVE)
+    }
     builder.setSpan(
-      BlockTagSpan(tag = tag, listType = listType, indentLevel = indentLevel),
+      BlockTagSpan(tag = tag, listType = listType, indentLevel = indentLevel, align = align),
       start,
       end,
       Spanned.SPAN_INCLUSIVE_INCLUSIVE,

@@ -85,6 +85,8 @@ using namespace facebook::react;
 - (void)blur { [_impl blur]; }
 - (void)toggleInlineStyle:(NSString *)style { [_impl toggleInlineStyle:style]; }
 - (void)setBlockType:(NSString *)tag { [_impl setBlockType:tag]; }
+- (void)setAlignment:(NSString *)align { [_impl setAlignment:align]; }
+- (void)setTextColor:(NSString *)color { [_impl setTextColor:color]; }
 - (void)insertEmbed:(NSString *)embedJson { [_impl insertEmbedJSON:embedJson]; }
 
 // Event emitters.

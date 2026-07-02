@@ -130,7 +130,21 @@ function serializeInline(block: BlockNode, registry: TagRegistry): string {
 
 function serializeBlock(block: BlockNode, registry: TagRegistry): string {
   const tag = registry.serializeBlock(block) ?? { tag: block.tag || 'p', attrs: {} };
-  return `${openTag(tag)}${serializeInline(block, registry)}${closeTag(tag)}`;
+  const attrs = withAlignment(tag.attrs, block.align);
+  const withAttrs: SerializedTag = { ...tag, attrs };
+  return `${openTag(withAttrs)}${serializeInline(block, registry)}${closeTag(withAttrs)}`;
+}
+
+/** Merge a `text-align` declaration into a block tag's inline style, if the block is aligned. */
+function withAlignment(
+  attrs: Record<string, string>,
+  align: BlockNode['align'],
+): Record<string, string> {
+  if (!align || align === 'left') {
+    return attrs;
+  }
+  const existing = attrs.style ? `${attrs.style.replace(/;\s*$/, '')}; ` : '';
+  return { ...attrs, style: `${existing}text-align: ${align}` };
 }
 
 type ListKind = 'ul' | 'ol';

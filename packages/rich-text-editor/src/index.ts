@@ -34,5 +34,6 @@ export {
   type StyleRun,
   type EmbedPlaceholder,
   type ListType,
+  type Alignment,
   type InlineStyleName,
 } from './types/nativeTypes';
