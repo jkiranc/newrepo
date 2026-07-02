@@ -45,6 +45,10 @@ class RichTextEditorView(context: Context) : AppCompatEditText(context) {
   private var lastInsertStart = -1
   private var lastInsertCount = 0
 
+  // AppCompatEditText's constructor calls setText, which fires onSelectionChanged before this
+  // class's fields are initialized. Guard callbacks until construction finishes to avoid NPEs.
+  private var initialized = false
+
   init {
     setPadding(24, 24, 24, 24)
     addTextChangedListener(object : TextWatcher {
@@ -54,11 +58,12 @@ class RichTextEditorView(context: Context) : AppCompatEditText(context) {
         lastInsertCount = count
       }
       override fun afterTextChanged(s: Editable?) {
-        if (suppressEvents) return
+        if (!initialized || suppressEvents) return
         applyPendingStyles()
         emitDocumentChange()
       }
     })
+    initialized = true
   }
 
   fun applyInitialDocument(json: String) {
@@ -146,7 +151,8 @@ class RichTextEditorView(context: Context) : AppCompatEditText(context) {
 
   override fun onSelectionChanged(selStart: Int, selEnd: Int) {
     super.onSelectionChanged(selStart, selEnd)
-    if (suppressEvents) return
+    // Fires during the superclass constructor (before fields exist) — bail until initialized.
+    if (!initialized || suppressEvents) return
     if (selStart == selEnd) {
       // Caret moved: refresh pending styles from what's active just before the caret.
       pendingStyles.clear()
