@@ -63,6 +63,28 @@ jobs:
           echo "newArchEnabled=true" >> ${HOST_DIR}/android/gradle.properties
           # Build a single ABI first to keep the initial build fast.
           echo "reactNativeArchitectures=arm64-v8a" >> ${HOST_DIR}/android/gradle.properties
+          # Metro must resolve the library (installed via file:) from its TS source in the
+          # monorepo, so point it at the repo root and map the package to its directory.
+          cat > ${HOST_DIR}/metro.config.js <<'METRO'
+          const path = require('path');
+          const { getDefaultConfig, mergeConfig } = require('@react-native/metro-config');
+          const root = path.resolve(__dirname, '..');
+          const libRoot = path.resolve(root, 'packages/rich-text-editor');
+          const config = {
+            watchFolders: [root],
+            resolver: {
+              unstable_enableSymlinks: true,
+              nodeModulesPaths: [
+                path.resolve(__dirname, 'node_modules'),
+                path.resolve(root, 'node_modules'),
+              ],
+              extraNodeModules: {
+                'react-native-fabric-rich-text': libRoot,
+              },
+            },
+          };
+          module.exports = mergeConfig(getDefaultConfig(__dirname), config);
+          METRO
 
       - name: Install dependencies
         working-directory: ${{ env.HOST_DIR }}
