@@ -80,6 +80,7 @@ jobs:
               nodeModulesPaths: [
                 path.resolve(__dirname, 'node_modules'),
                 path.resolve(root, 'node_modules'),
+                path.resolve(libRoot, 'node_modules'),
               ],
               extraNodeModules: {
                 'react-native-fabric-rich-text': libRoot,
