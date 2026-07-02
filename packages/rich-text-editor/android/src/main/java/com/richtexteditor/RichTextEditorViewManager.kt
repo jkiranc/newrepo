@@ -102,6 +102,10 @@ class RichTextEditorViewManager :
     view.adjustIndent(delta)
   }
 
+  override fun toggleList(view: RichTextEditorView, listType: String?) {
+    listType?.let { view.toggleList(it) }
+  }
+
   override fun insertText(view: RichTextEditorView, text: String?) {
     text?.let { view.insertText(it) }
   }

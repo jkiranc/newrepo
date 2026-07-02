@@ -163,13 +163,15 @@ export function documentToHtml(
   };
 
   for (const block of doc.blocks) {
-    const isListItem = block.listType === 'bullet' || block.listType === 'ordered';
+    const isListItem =
+      block.listType === 'bullet' || block.listType === 'ordered' || block.listType === 'check';
     if (!isListItem) {
       closeTo(0);
       out += serializeBlock(block, registry);
       continue;
     }
 
+    // Bullet and checklist both use <ul>; checklist items carry data-checked.
     const want: ListKind = block.listType === 'ordered' ? 'ol' : 'ul';
     const depth = block.listDepth ?? 0;
     closeTo(depth + 1);
@@ -180,7 +182,9 @@ export function documentToHtml(
       out += `<${want}>`;
       stack.push(want);
     }
-    out += `<li>${serializeInline(block, registry)}</li>`;
+    const liAttrs =
+      block.listType === 'check' ? ` data-checked="${block.checked ? 'true' : 'false'}"` : '';
+    out += `<li${liAttrs}>${serializeInline(block, registry)}</li>`;
   }
   closeTo(0);
   return out;

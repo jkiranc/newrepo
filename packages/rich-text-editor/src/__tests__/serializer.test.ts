@@ -51,6 +51,12 @@ describe('documentToHtml', () => {
     expect(roundTrip('<ol><li>a</li><li>b</li></ol>')).toBe('<ol><li>a</li><li>b</li></ol>');
   });
 
+  it('round-trips a checklist via data-checked', () => {
+    expect(
+      roundTrip('<ul><li data-checked="true">a</li><li data-checked="false">b</li></ul>'),
+    ).toBe('<ul><li data-checked="true">a</li><li data-checked="false">b</li></ul>');
+  });
+
   it('serializes an image as a self-closing tag', () => {
     expect(roundTrip('<p><img src="a.png"></p>')).toBe('<p><img src="a.png" /></p>');
   });

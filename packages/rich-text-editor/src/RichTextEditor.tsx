@@ -19,6 +19,7 @@ import {
   type Alignment,
   type EmbedPlaceholder,
   type InlineStyleName,
+  type ListType,
   type RichTextDocument,
 } from './types/nativeTypes';
 
@@ -62,6 +63,8 @@ export interface RichTextEditorRef {
   setLink: (url: string | null) => void;
   /** Adjust the current paragraph's indent by `delta` (e.g. +1 / -1). */
   adjustIndent: (delta: number) => void;
+  /** Toggle the current paragraph's list type ('bullet' | 'ordered' | 'check' | 'none'). */
+  toggleList: (listType: ListType) => void;
   /** Insert plain text (e.g. an emoji) at the caret. */
   insertText: (text: string) => void;
   /** Insert an image embed by URL at the caret. */
@@ -204,6 +207,8 @@ export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>
           nativeRef.current && Commands.setLink(nativeRef.current, url ?? ''),
         adjustIndent: (delta) =>
           nativeRef.current && Commands.adjustIndent(nativeRef.current, delta),
+        toggleList: (listType) =>
+          nativeRef.current && Commands.toggleList(nativeRef.current, listType),
         insertText: (text) =>
           nativeRef.current && Commands.insertText(nativeRef.current, text),
         insertImage: (src) => {

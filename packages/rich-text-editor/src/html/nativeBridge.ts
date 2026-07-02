@@ -102,6 +102,7 @@ interface BlockBuilder {
   listIndex?: number;
   indentLevel?: number;
   align?: Alignment;
+  checked?: boolean;
   spacingBefore?: number;
   spacingAfter?: number;
   data?: Record<string, string>;
@@ -155,6 +156,9 @@ function finalize(b: BlockBuilder): BlockNode {
   }
   if (b.align !== undefined) {
     node.align = b.align;
+  }
+  if (b.checked !== undefined) {
+    node.checked = b.checked;
   }
   if (b.spacingBefore !== undefined) {
     node.spacingBefore = b.spacingBefore;
@@ -274,7 +278,13 @@ function processList(
     }
     const def = registry.get('li');
     const b = newBlock(ids, def?.toBlock?.(child.attrs) ?? { tag: 'li' });
-    b.listType = listType;
+    // A `data-checked` attribute marks a checklist item regardless of the container tag.
+    if (child.attrs['data-checked'] !== undefined) {
+      b.listType = 'check';
+      b.checked = child.attrs['data-checked'] === 'true';
+    } else {
+      b.listType = listType;
+    }
     b.listDepth = depth;
     b.listIndex = index++;
     const nested: HtmlNode[] = [];

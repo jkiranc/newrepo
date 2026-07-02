@@ -53,6 +53,7 @@ struct BlockNode: Codable {
     var listIndex: Int? = nil
     var indentLevel: Int? = nil
     var align: String? = nil
+    var checked: Bool? = nil
     var embeds: [EmbedPlaceholder]? = nil
 }
 
@@ -118,6 +119,9 @@ enum SpanApplier {
             }
             if let align = block.align {
                 attributed.addAttribute(.rteAlign, value: align, range: whole)
+            }
+            if let checked = block.checked {
+                attributed.addAttribute(.rteChecked, value: checked, range: whole)
             }
         }
         return attributed
@@ -214,6 +218,7 @@ extension NSAttributedString.Key {
     static let rteListDepth = NSAttributedString.Key("rteListDepth")
     static let rteIndentLevel = NSAttributedString.Key("rteIndentLevel")
     static let rteAlign = NSAttributedString.Key("rteAlign")
+    static let rteChecked = NSAttributedString.Key("rteChecked")
 }
 
 extension UIColor {

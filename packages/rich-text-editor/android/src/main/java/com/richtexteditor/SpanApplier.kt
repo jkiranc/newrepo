@@ -55,7 +55,9 @@ object SpanApplier {
     val listType = if (block.has("listType")) block.optString("listType") else null
     val indentLevel = block.optInt("indentLevel", 0)
     val align = if (block.has("align")) block.optString("align") else null
-    styleBlock(builder, start, end, tag, listType, indentLevel, align, density)
+    val listIndex = block.optInt("listIndex", 0)
+    val checked = block.optBoolean("checked", false)
+    styleBlock(builder, start, end, tag, listType, indentLevel, align, density, listIndex, checked)
 
     val runs = block.optJSONArray("styleRuns") ?: JSONArray()
     for (i in 0 until runs.length()) {
@@ -92,6 +94,8 @@ object SpanApplier {
     indentLevel: Int,
     align: String?,
     density: Float,
+    listIndex: Int = 0,
+    checked: Boolean = false,
   ) {
     if (end < start) return
     val headingScale = when (tag) {
@@ -109,11 +113,20 @@ object SpanApplier {
     if ((tag == "pre" || tag == "code") && end > start) {
       builder.setSpan(TypefaceSpan("monospace"), start, end, Spanned.SPAN_INCLUSIVE_INCLUSIVE)
     }
-    val indentLevels = indentLevel + (if (listType != null && listType != "none") 1 else 0) +
-      (if (tag == "blockquote") 1 else 0)
-    if (indentLevels > 0 && end > start) {
-      val marginPx = (indentLevels * 20 * density).toInt()
+    val blockIndent = indentLevel + (if (tag == "blockquote") 1 else 0)
+    if (blockIndent > 0 && end > start) {
+      val marginPx = (blockIndent * 20 * density).toInt()
       builder.setSpan(LeadingMarginSpan.Standard(marginPx), start, end, Spanned.SPAN_INCLUSIVE_INCLUSIVE)
+    }
+    // List marker (bullet / number / checkbox) reserves its own leading margin and draws itself.
+    if (listType != null && listType != "none" && end > start) {
+      val gap = (28 * density).toInt()
+      builder.setSpan(
+        ListMarkerSpan(listType, listIndex, checked, gap),
+        start,
+        end,
+        Spanned.SPAN_INCLUSIVE_INCLUSIVE,
+      )
     }
     // Paragraph alignment. Android's AlignmentSpan has no justify; treat it as normal (left).
     val alignment = when (align) {
@@ -125,7 +138,14 @@ object SpanApplier {
       builder.setSpan(AlignmentSpan.Standard(alignment), start, end, Spanned.SPAN_INCLUSIVE_INCLUSIVE)
     }
     builder.setSpan(
-      BlockTagSpan(tag = tag, listType = listType, indentLevel = indentLevel, align = align),
+      BlockTagSpan(
+        tag = tag,
+        listType = listType,
+        indentLevel = indentLevel,
+        align = align,
+        checked = checked,
+        listIndex = listIndex,
+      ),
       start,
       end,
       Spanned.SPAN_INCLUSIVE_INCLUSIVE,

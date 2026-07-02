@@ -41,7 +41,7 @@ export interface StyleRun {
   data?: Record<string, string>;
 }
 
-export type ListType = 'none' | 'bullet' | 'ordered';
+export type ListType = 'none' | 'bullet' | 'ordered' | 'check';
 
 export type Alignment = 'left' | 'center' | 'right' | 'justify';
 
@@ -65,6 +65,8 @@ export interface BlockNode {
   indentLevel?: number;
   /** Paragraph text alignment. */
   align?: Alignment;
+  /** For `listType: 'check'` items — whether the checkbox is ticked. */
+  checked?: boolean;
   spacingBefore?: number;
   spacingAfter?: number;
   /** Embeds positioned at the {@link OBJECT_REPLACEMENT_CHAR} offsets within `text`. */

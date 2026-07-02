@@ -70,6 +70,11 @@ interface NativeCommands {
     viewRef: React.ElementRef<HostComponent<NativeProps>>,
     delta: Int32,
   ) => void;
+  /** Toggle the current paragraph's list type ('bullet' | 'ordered' | 'check' | 'none'). */
+  toggleList: (
+    viewRef: React.ElementRef<HostComponent<NativeProps>>,
+    listType: string,
+  ) => void;
   /** Insert plain text (e.g. an emoji) at the caret. */
   insertText: (
     viewRef: React.ElementRef<HostComponent<NativeProps>>,
@@ -93,6 +98,7 @@ export const Commands: NativeCommands = codegenNativeCommands<NativeCommands>({
     'setTextColor',
     'setLink',
     'adjustIndent',
+    'toggleList',
     'insertText',
     'insertEmbed',
   ],

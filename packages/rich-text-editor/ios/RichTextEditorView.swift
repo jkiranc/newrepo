@@ -163,6 +163,36 @@ public final class RichTextEditorViewImpl: NSObject, UITextViewDelegate {
         notifySelectionChange()
     }
 
+    @objc public func toggleList(_ listType: String) {
+        guard let current = textView.attributedText else { return }
+        let range = (current.string as NSString).paragraphRange(for: textView.selectedRange)
+        guard range.length > 0 else { return }
+        let mutable = NSMutableAttributedString(attributedString: current)
+        let currentType = mutable.attribute(.rteListType, at: range.location, effectiveRange: nil) as? String
+        let newType: String? = currentType == listType ? nil : listType
+        let tag = mutable.attribute(.rteBlockTag, at: range.location, effectiveRange: nil) as? String ?? "p"
+        let align = mutable.attribute(.rteAlign, at: range.location, effectiveRange: nil) as? String
+        let indent = mutable.attribute(.rteIndentLevel, at: range.location, effectiveRange: nil) as? Int
+        let paragraph = SpanApplier.paragraphStyle(forTag: tag, listType: newType, indentLevel: indent, align: align)
+        mutable.addAttribute(.paragraphStyle, value: paragraph, range: range)
+        if let newType {
+            mutable.addAttribute(.rteListType, value: newType, range: range)
+            if newType == "check" {
+                mutable.addAttribute(.rteChecked, value: false, range: range)
+            } else {
+                mutable.removeAttribute(.rteChecked, range: range)
+            }
+        } else {
+            mutable.removeAttribute(.rteListType, range: range)
+            mutable.removeAttribute(.rteChecked, range: range)
+        }
+        let selection = textView.selectedRange
+        textView.attributedText = mutable
+        textView.selectedRange = selection
+        emitDocumentChange()
+        notifySelectionChange()
+    }
+
     @objc public func setLink(_ url: String) {
         var selected = textView.selectedRange
         let length = textView.attributedText?.length ?? 0
@@ -301,6 +331,7 @@ public final class RichTextEditorViewImpl: NSObject, UITextViewDelegate {
         var listDepth: Int?
         var indentLevel: Int?
         var align: String?
+        var checked: Bool?
 
         if range.length > 0 {
             blockTag = attributed.attribute(.rteBlockTag, at: range.location, effectiveRange: nil) as? String ?? "p"
@@ -308,6 +339,7 @@ public final class RichTextEditorViewImpl: NSObject, UITextViewDelegate {
             listDepth = attributed.attribute(.rteListDepth, at: range.location, effectiveRange: nil) as? Int
             indentLevel = attributed.attribute(.rteIndentLevel, at: range.location, effectiveRange: nil) as? Int
             align = attributed.attribute(.rteAlign, at: range.location, effectiveRange: nil) as? String
+            checked = attributed.attribute(.rteChecked, at: range.location, effectiveRange: nil) as? Bool
 
             attributed.enumerateAttributes(in: range) { attrs, r, _ in
                 let rel = NSRange(location: r.location - range.location, length: r.length)
@@ -331,7 +363,7 @@ public final class RichTextEditorViewImpl: NSObject, UITextViewDelegate {
         return BlockNode(
             id: id, tag: blockTag, text: paragraphText, styleRuns: runs,
             listType: listType, listDepth: listDepth, indentLevel: indentLevel,
-            align: align, embeds: embeds.isEmpty ? nil : embeds
+            align: align, checked: checked, embeds: embeds.isEmpty ? nil : embeds
         )
     }
 

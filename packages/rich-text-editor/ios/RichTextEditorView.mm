@@ -89,6 +89,7 @@ using namespace facebook::react;
 - (void)setTextColor:(NSString *)color { [_impl setTextColor:color]; }
 - (void)setLink:(NSString *)url { [_impl setLink:url]; }
 - (void)adjustIndent:(NSInteger)delta { [_impl adjustIndent:delta]; }
+- (void)toggleList:(NSString *)listType { [_impl toggleList:listType]; }
 - (void)insertText:(NSString *)text { [_impl insertText:text]; }
 - (void)insertEmbed:(NSString *)embedJson { [_impl insertEmbedJSON:embedJson]; }
 

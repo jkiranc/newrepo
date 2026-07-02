@@ -124,15 +124,24 @@ class RichTextEditorView(context: Context) : AppCompatEditText(context) {
   fun setBlockType(tag: String) {
     val editable = text ?: return
     val (start, end) = currentParagraphRange(editable, toolbarCaret())
-    val existing = editable.getSpans(start, end, BlockTagSpan::class.java).firstOrNull()
-    restyleParagraph(start, end, tag, existing?.listType, existing?.indentLevel ?: 0, existing?.align)
+    val e = editable.getSpans(start, end, BlockTagSpan::class.java).firstOrNull()
+    restyleParagraph(start, end, tag, e?.listType, e?.indentLevel ?: 0, e?.align, e?.listIndex ?: 0, e?.checked ?: false)
   }
 
   fun setAlignment(align: String) {
     val editable = text ?: return
     val (start, end) = currentParagraphRange(editable, toolbarCaret())
-    val existing = editable.getSpans(start, end, BlockTagSpan::class.java).firstOrNull()
-    restyleParagraph(start, end, existing?.tag ?: "p", existing?.listType, existing?.indentLevel ?: 0, align)
+    val e = editable.getSpans(start, end, BlockTagSpan::class.java).firstOrNull()
+    restyleParagraph(start, end, e?.tag ?: "p", e?.listType, e?.indentLevel ?: 0, align, e?.listIndex ?: 0, e?.checked ?: false)
+  }
+
+  fun toggleList(listType: String) {
+    val editable = text ?: return
+    val (start, end) = currentParagraphRange(editable, toolbarCaret())
+    val e = editable.getSpans(start, end, BlockTagSpan::class.java).firstOrNull()
+    // Tapping the active list type again turns the list off.
+    val newType = if (e?.listType == listType) null else listType
+    restyleParagraph(start, end, e?.tag ?: "p", newType, e?.indentLevel ?: 0, e?.align, 0, false)
   }
 
   fun setTextColor(color: String) {
@@ -197,9 +206,9 @@ class RichTextEditorView(context: Context) : AppCompatEditText(context) {
   fun adjustIndent(delta: Int) {
     val editable = text ?: return
     val (start, end) = currentParagraphRange(editable, toolbarCaret())
-    val existing = editable.getSpans(start, end, BlockTagSpan::class.java).firstOrNull()
-    val newIndent = ((existing?.indentLevel ?: 0) + delta).coerceIn(0, 8)
-    restyleParagraph(start, end, existing?.tag ?: "p", existing?.listType, newIndent, existing?.align)
+    val e = editable.getSpans(start, end, BlockTagSpan::class.java).firstOrNull()
+    val newIndent = ((e?.indentLevel ?: 0) + delta).coerceIn(0, 8)
+    restyleParagraph(start, end, e?.tag ?: "p", e?.listType, newIndent, e?.align, e?.listIndex ?: 0, e?.checked ?: false)
   }
 
   fun insertText(textToInsert: String) {
@@ -209,8 +218,17 @@ class RichTextEditorView(context: Context) : AppCompatEditText(context) {
     setSelection(pos + textToInsert.length)
   }
 
-  /** Remove block-level spans over a paragraph and re-apply styling for the given tag/align. */
-  private fun restyleParagraph(start: Int, end: Int, tag: String, listType: String?, indentLevel: Int, align: String?) {
+  /** Remove block-level spans over a paragraph and re-apply styling for the given tag/list/align. */
+  private fun restyleParagraph(
+    start: Int,
+    end: Int,
+    tag: String,
+    listType: String?,
+    indentLevel: Int,
+    align: String?,
+    listIndex: Int,
+    checked: Boolean,
+  ) {
     val editable = text ?: return
     suppressEvents = true
     for (span in editable.getSpans(start, end, Any::class.java)) {
@@ -219,7 +237,10 @@ class RichTextEditorView(context: Context) : AppCompatEditText(context) {
           editable.removeSpan(span)
       }
     }
-    SpanApplier.styleBlock(editable, start, end, tag, listType, indentLevel, align, resources.displayMetrics.density)
+    SpanApplier.styleBlock(
+      editable, start, end, tag, listType, indentLevel, align,
+      resources.displayMetrics.density, listIndex, checked,
+    )
     suppressEvents = false
     emitDocumentChange()
     notifySelectionChange(selectionStart, selectionEnd)
@@ -253,6 +274,16 @@ class RichTextEditorView(context: Context) : AppCompatEditText(context) {
       if (editable != null && offset in 0 until editable.length) {
         val spans = editable.getSpans(offset, offset + 1, EmbedReplacementSpan::class.java)
         spans.firstOrNull()?.let { onEmbedPress?.invoke(it.tag, it.dataJson) }
+
+        // Tapping the checkbox area of a checklist item toggles it.
+        val leftZone = paddingLeft + 32 * resources.displayMetrics.density
+        if (event.x < leftZone) {
+          val (start, end) = currentParagraphRange(editable, offset)
+          val block = editable.getSpans(start, end, BlockTagSpan::class.java).firstOrNull()
+          if (block != null && block.listType == "check") {
+            restyleParagraph(start, end, block.tag, "check", block.indentLevel, block.align, 0, !block.checked)
+          }
+        }
       }
     }
     return super.onTouchEvent(event)
@@ -348,12 +379,14 @@ class RichTextEditorView(context: Context) : AppCompatEditText(context) {
     var listType: String? = null
     var indentLevel = 0
     var align: String? = null
+    var checked = false
     if (end > start) {
       editable.getSpans(start, end, BlockTagSpan::class.java).firstOrNull()?.let {
         tag = it.tag
         listType = it.listType
         indentLevel = it.indentLevel
         align = it.align
+        checked = it.checked
       }
     }
 
@@ -365,6 +398,7 @@ class RichTextEditorView(context: Context) : AppCompatEditText(context) {
     listType?.let { block.put("listType", it).put("listDepth", 0) }
     if (indentLevel > 0) block.put("indentLevel", indentLevel)
     align?.let { block.put("align", it) }
+    if (listType == "check") block.put("checked", checked)
 
     // Recover embeds from their chip spans (offsets relative to the paragraph).
     val embeds = JSONArray()

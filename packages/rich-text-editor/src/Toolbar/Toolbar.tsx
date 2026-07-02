@@ -149,6 +149,12 @@ export function Toolbar({
 
         <Divider />
 
+        <ToolbarButton label="•" active={false} accessibilityLabel="list-bullet" onPress={() => editorRef.current?.toggleList('bullet')} />
+        <ToolbarButton label="1." active={false} accessibilityLabel="list-ordered" onPress={() => editorRef.current?.toggleList('ordered')} />
+        <ToolbarButton label="☑" active={false} accessibilityLabel="list-check" onPress={() => editorRef.current?.toggleList('check')} />
+
+        <Divider />
+
         <ToolbarButton label="🔗" active={false} accessibilityLabel="link" onPress={() => setLinkOpen(true)} />
         <ToolbarButton
           label="❝"
