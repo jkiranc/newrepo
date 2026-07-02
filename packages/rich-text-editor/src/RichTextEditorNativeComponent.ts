@@ -1,3 +1,4 @@
+import type * as React from 'react';
 import type { HostComponent, ViewProps } from 'react-native';
 import codegenNativeComponent from 'react-native/Libraries/Utilities/codegenNativeComponent';
 import codegenNativeCommands from 'react-native/Libraries/Utilities/codegenNativeCommands';
@@ -29,19 +30,31 @@ export interface NativeProps extends ViewProps {
   onEmbedPress?: DirectEventHandler<Readonly<{ tag: string; dataJson: string }>>;
 }
 
-type ComponentRef = React.ElementRef<HostComponent<NativeProps>>;
-
+// Fabric codegen requires each command's first argument to be written literally as
+// `React.ElementRef<...>` — a type alias is not resolved by the codegen parser.
 interface NativeCommands {
   /** Replace the entire buffer with a serialized {@link RichTextDocument}. */
-  setDocument: (viewRef: ComponentRef, documentJson: string) => void;
-  focus: (viewRef: ComponentRef) => void;
-  blur: (viewRef: ComponentRef) => void;
+  setDocument: (
+    viewRef: React.ElementRef<HostComponent<NativeProps>>,
+    documentJson: string,
+  ) => void;
+  focus: (viewRef: React.ElementRef<HostComponent<NativeProps>>) => void;
+  blur: (viewRef: React.ElementRef<HostComponent<NativeProps>>) => void;
   /** Toggle an inline style ('bold' | 'italic' | 'underline' | 'strikethrough'). */
-  toggleInlineStyle: (viewRef: ComponentRef, style: string) => void;
+  toggleInlineStyle: (
+    viewRef: React.ElementRef<HostComponent<NativeProps>>,
+    style: string,
+  ) => void;
   /** Set the current block's type ('p' | 'h1'..'h6' | 'blockquote' | 'pre'). */
-  setBlockType: (viewRef: ComponentRef, tag: string) => void;
+  setBlockType: (
+    viewRef: React.ElementRef<HostComponent<NativeProps>>,
+    tag: string,
+  ) => void;
   /** Insert a serialized {@link EmbedPlaceholder} at the current caret position. */
-  insertEmbed: (viewRef: ComponentRef, embedJson: string) => void;
+  insertEmbed: (
+    viewRef: React.ElementRef<HostComponent<NativeProps>>,
+    embedJson: string,
+  ) => void;
 }
 
 export const Commands: NativeCommands = codegenNativeCommands<NativeCommands>({
