@@ -4,10 +4,13 @@ import com.facebook.react.BaseReactPackage
 import com.facebook.react.ReactPackage
 import com.facebook.react.bridge.NativeModule
 import com.facebook.react.bridge.ReactApplicationContext
+import com.facebook.react.common.annotations.UnstableReactNativeAPI
 import com.facebook.react.module.model.ReactModuleInfo
 import com.facebook.react.module.model.ReactModuleInfoProvider
 import com.facebook.react.uimanager.ViewManager
 
+// BaseReactPackage's module-info API is still marked experimental in RN 0.76.
+@OptIn(UnstableReactNativeAPI::class)
 class RichTextEditorPackage : BaseReactPackage(), ReactPackage {
 
   override fun getModule(name: String, reactContext: ReactApplicationContext): NativeModule? = null

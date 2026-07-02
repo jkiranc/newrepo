@@ -2,6 +2,7 @@ package com.richtexteditor
 
 import android.graphics.Color
 import android.graphics.Typeface
+import android.text.Spannable
 import android.text.SpannableStringBuilder
 import android.text.Spanned
 import android.text.style.AbsoluteSizeSpan
@@ -78,7 +79,7 @@ object SpanApplier {
    * only a size span (no bold) so inline bold is never clobbered when the block type changes.
    */
   fun styleBlock(
-    builder: SpannableStringBuilder,
+    builder: Spannable,
     start: Int,
     end: Int,
     tag: String,
