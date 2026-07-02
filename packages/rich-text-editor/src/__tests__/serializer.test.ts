@@ -58,6 +58,43 @@ describe('documentToHtml', () => {
     expect(roundTrip('<p>a<br>b</p>')).toBe('<p>a<br />b</p>');
   });
 
+  it('coalesces fragmented per-character runs from native reconstruction', () => {
+    // Android applies a span per typed character, so onDocumentChange emits one run per char.
+    // The serializer must merge them into a single tag rather than one tag per character.
+    const doc = {
+      blocks: [
+        {
+          id: 'b0',
+          tag: 'p',
+          text: 'abc',
+          styleRuns: [
+            { start: 0, length: 1, bold: true, tag: 'span' },
+            { start: 1, length: 1, bold: true, tag: 'span' },
+            { start: 2, length: 1, bold: true, tag: 'span' },
+          ],
+        },
+      ],
+    };
+    expect(documentToHtml(doc)).toBe('<p><strong>abc</strong></p>');
+  });
+
+  it('coalesces combined bold+italic per-character runs', () => {
+    const doc = {
+      blocks: [
+        {
+          id: 'b0',
+          tag: 'p',
+          text: 'hi',
+          styleRuns: [
+            { start: 0, length: 1, bold: true, italic: true, tag: 'span' },
+            { start: 1, length: 1, bold: true, italic: true, tag: 'span' },
+          ],
+        },
+      ],
+    };
+    expect(documentToHtml(doc)).toBe('<p><strong><em>hi</em></strong></p>');
+  });
+
   it('serializes a native-reconstructed embed document to a custom tag', () => {
     // This is the exact document shape the native views emit via onDocumentChange after an
     // embed is rendered/inserted — validating the native -> JS -> HTML contract.

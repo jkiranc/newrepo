@@ -72,7 +72,7 @@ function sameStyle(a: StyleRun, b: StyleRun): boolean {
 }
 
 /** Merge adjacent, identically-styled runs so edits don't fragment output (see risk #5). */
-function coalesceRuns(runs: StyleRun[]): StyleRun[] {
+export function coalesceRuns(runs: StyleRun[]): StyleRun[] {
   const sorted = [...runs].sort((x, y) => x.start - y.start);
   const out: StyleRun[] = [];
   for (const run of sorted) {

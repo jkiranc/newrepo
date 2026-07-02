@@ -5,6 +5,7 @@ import type {
   StyleRun,
 } from '../types/nativeTypes';
 import { defaultTagRegistry, TagRegistry, type SerializedTag } from '../registry/TagRegistry';
+import { coalesceRuns } from './nativeBridge';
 // Side-effect import: ensures built-in tags are installed on `defaultTagRegistry`.
 import '../registry/builtInTags';
 
@@ -90,7 +91,9 @@ function runCovering(runs: StyleRun[], index: number): StyleRun | undefined {
 /** Serialize a block's text (with its style runs and embeds) into inline HTML. */
 function serializeInline(block: BlockNode, registry: TagRegistry): string {
   const { text } = block;
-  const runs = [...block.styleRuns].sort((a, b) => a.start - b.start);
+  // Merge adjacent identical runs so native per-character spans don't produce fragmented
+  // output like <strong>a</strong><strong>b</strong> instead of <strong>ab</strong>.
+  const runs = coalesceRuns(block.styleRuns);
   const embedByOffset = new Map<number, EmbedPlaceholder>();
   for (const embed of block.embeds ?? []) {
     embedByOffset.set(embed.offset, embed);
