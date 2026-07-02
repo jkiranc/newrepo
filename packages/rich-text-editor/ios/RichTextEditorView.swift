@@ -84,8 +84,33 @@ public final class RichTextEditorViewImpl: NSObject, UITextViewDelegate {
     }
 
     @objc public func setBlockType(_ tag: String) {
-        // Phase 4a: change the current block's tag and reflow paragraph style.
+        guard let current = textView.attributedText else { return }
+        let paragraphRange = (current.string as NSString).paragraphRange(for: textView.selectedRange)
+        let mutable = NSMutableAttributedString(attributedString: current)
+        applyBlockStyle(tag: tag, to: mutable, range: paragraphRange)
+        let selection = textView.selectedRange
+        textView.attributedText = mutable
+        textView.selectedRange = selection
         emitDocumentChange()
+        notifySelectionChange()
+    }
+
+    /// Re-style a paragraph for a new block tag, preserving inline traits (bold/italic) while
+    /// swapping the base font, and stamp the tag so reconstruction recovers it.
+    private func applyBlockStyle(tag: String, to string: NSMutableAttributedString, range: NSRange) {
+        guard range.length > 0 else { return }
+        let baseFont = SpanApplier.font(forTag: tag)
+        let paragraph = SpanApplier.paragraphStyle(forTag: tag, listType: nil, indentLevel: nil)
+        string.enumerateAttribute(.font, in: range) { value, sub, _ in
+            let traits = (value as? UIFont)?.fontDescriptor.symbolicTraits ?? []
+            var font = baseFont
+            if !traits.isEmpty, let descriptor = font.fontDescriptor.withSymbolicTraits(traits) {
+                font = UIFont(descriptor: descriptor, size: font.pointSize)
+            }
+            string.addAttribute(.font, value: font, range: sub)
+        }
+        string.addAttribute(.paragraphStyle, value: paragraph, range: range)
+        string.addAttribute(.rteBlockTag, value: tag, range: range)
     }
 
     @objc public func insertEmbedJSON(_ json: String) {
@@ -136,40 +161,79 @@ public final class RichTextEditorViewImpl: NSObject, UITextViewDelegate {
 
     // MARK: - Attributed string → document
 
-    /// Walk the attributed string, coalescing contiguous equal-attribute ranges into runs and
-    /// recovering embeds from their attachments. Multi-block/list reconstruction is Phase 4a.
+    /// Split the buffer into paragraphs (on "\n") and reconstruct one block per paragraph,
+    /// recovering each block's tag/list from stamped attributes plus its inline runs and embeds.
     private func rebuildDocument() -> RichTextDocument {
         let attributed = textView.attributedText ?? NSAttributedString()
-        let text = attributed.string
-        let fullRange = NSRange(location: 0, length: attributed.length)
+        let nsText = attributed.string as NSString
+        let length = attributed.length
+        var blocks: [BlockNode] = []
+        var paragraphStart = 0
+        var index = 0
+
+        func appendParagraph(_ range: NSRange) {
+            blocks.append(buildBlock(attributed: attributed, range: range, index: index))
+            index += 1
+        }
+
+        var searchStart = 0
+        while true {
+            let searchRange = NSRange(location: searchStart, length: length - searchStart)
+            let newline = nsText.range(of: "\n", options: [], range: searchRange)
+            if newline.location == NSNotFound {
+                appendParagraph(NSRange(location: paragraphStart, length: length - paragraphStart))
+                break
+            }
+            appendParagraph(NSRange(location: paragraphStart, length: newline.location - paragraphStart))
+            paragraphStart = newline.location + 1
+            searchStart = newline.location + 1
+            if searchStart > length { break }
+        }
+        if blocks.isEmpty {
+            blocks.append(BlockNode(id: "b0", tag: "p", text: "", styleRuns: []))
+        }
+        return RichTextDocument(blocks: blocks)
+    }
+
+    private func buildBlock(attributed: NSAttributedString, range: NSRange, index: Int) -> BlockNode {
+        let paragraphText = (attributed.string as NSString).substring(with: range)
         var runs: [StyleRun] = []
         var embeds: [EmbedPlaceholder] = []
+        var blockTag = "p"
+        var listType: String?
+        var listDepth: Int?
+        var indentLevel: Int?
 
-        attributed.enumerateAttributes(in: fullRange) { attrs, range, _ in
-            if let attachment = attrs[.attachment] as? EmbedTextAttachment {
-                var embed = attachment.embed
-                embed.offset = range.location
-                embeds.append(embed)
-                return
-            }
-            guard let run = styleRun(from: attrs, range: range) else { return }
-            if var last = runs.last, last.start + last.length == run.start, sameStyle(last, run) {
-                last.length += run.length
-                runs[runs.count - 1] = last
-            } else {
-                runs.append(run)
+        if range.length > 0 {
+            blockTag = attributed.attribute(.rteBlockTag, at: range.location, effectiveRange: nil) as? String ?? "p"
+            listType = attributed.attribute(.rteListType, at: range.location, effectiveRange: nil) as? String
+            listDepth = attributed.attribute(.rteListDepth, at: range.location, effectiveRange: nil) as? Int
+            indentLevel = attributed.attribute(.rteIndentLevel, at: range.location, effectiveRange: nil) as? Int
+
+            attributed.enumerateAttributes(in: range) { attrs, r, _ in
+                let rel = NSRange(location: r.location - range.location, length: r.length)
+                if let attachment = attrs[.attachment] as? EmbedTextAttachment {
+                    var embed = attachment.embed
+                    embed.offset = rel.location
+                    embeds.append(embed)
+                    return
+                }
+                guard let run = styleRun(from: attrs, range: rel) else { return }
+                if var last = runs.last, last.start + last.length == run.start, sameStyle(last, run) {
+                    last.length += run.length
+                    runs[runs.count - 1] = last
+                } else {
+                    runs.append(run)
+                }
             }
         }
 
-        let blockId = document.blocks.first?.id ?? "b0"
-        let block = BlockNode(
-            id: blockId,
-            tag: document.blocks.first?.tag ?? "p",
-            text: text,
-            styleRuns: runs,
+        let id = index < document.blocks.count ? document.blocks[index].id : "b\(index)"
+        return BlockNode(
+            id: id, tag: blockTag, text: paragraphText, styleRuns: runs,
+            listType: listType, listDepth: listDepth, indentLevel: indentLevel,
             embeds: embeds.isEmpty ? nil : embeds
         )
-        return RichTextDocument(blocks: [block])
     }
 
     private func styleRun(from attrs: [NSAttributedString.Key: Any], range: NSRange) -> StyleRun? {

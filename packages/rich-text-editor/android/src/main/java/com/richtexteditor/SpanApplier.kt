@@ -46,7 +46,10 @@ object SpanApplier {
     builder.append(block.optString("text"))
     val end = builder.length
 
-    applyBlockStyle(builder, block, start, end, density)
+    val tag = block.optString("tag", "p")
+    val listType = if (block.has("listType")) block.optString("listType") else null
+    val indentLevel = block.optInt("indentLevel", 0)
+    styleBlock(builder, start, end, tag, listType, indentLevel, density)
 
     val runs = block.optJSONArray("styleRuns") ?: JSONArray()
     for (i in 0 until runs.length()) {
@@ -69,35 +72,47 @@ object SpanApplier {
     }
   }
 
-  private fun applyBlockStyle(
+  /**
+   * Apply block-level styling (heading size, code font, indent) plus a BlockTagSpan marker over
+   * `[start, end]`. Reusable by both initial rendering and the view's setBlockType. Headings use
+   * only a size span (no bold) so inline bold is never clobbered when the block type changes.
+   */
+  fun styleBlock(
     builder: SpannableStringBuilder,
-    block: JSONObject,
     start: Int,
     end: Int,
+    tag: String,
+    listType: String?,
+    indentLevel: Int,
     density: Float,
   ) {
-    val headingScale = when (block.optString("tag")) {
+    if (end < start) return
+    val headingScale = when (tag) {
       "h1" -> 1.9f
       "h2" -> 1.6f
       "h3" -> 1.4f
       "h4" -> 1.2f
       "h5" -> 1.1f
-      "h6" -> 1.0f
       else -> null
     }
-    if (headingScale != null) {
+    if (headingScale != null && end > start) {
       builder.setSpan(RelativeSizeSpan(headingScale), start, end, Spanned.SPAN_INCLUSIVE_INCLUSIVE)
-      builder.setSpan(StyleSpan(Typeface.BOLD), start, end, Spanned.SPAN_INCLUSIVE_INCLUSIVE)
     }
-    if (block.optString("tag") == "pre" || block.optString("tag") == "code") {
+    if ((tag == "pre" || tag == "code") && end > start) {
       builder.setSpan(TypefaceSpan("monospace"), start, end, Spanned.SPAN_INCLUSIVE_INCLUSIVE)
     }
-
-    val indentLevels = block.optInt("indentLevel", 0) + if (block.has("listType")) 1 else 0
-    if (indentLevels > 0) {
+    val indentLevels = indentLevel + (if (listType != null && listType != "none") 1 else 0) +
+      (if (tag == "blockquote") 1 else 0)
+    if (indentLevels > 0 && end > start) {
       val marginPx = (indentLevels * 20 * density).toInt()
       builder.setSpan(LeadingMarginSpan.Standard(marginPx), start, end, Spanned.SPAN_INCLUSIVE_INCLUSIVE)
     }
+    builder.setSpan(
+      BlockTagSpan(tag = tag, listType = listType, indentLevel = indentLevel),
+      start,
+      end,
+      Spanned.SPAN_INCLUSIVE_INCLUSIVE,
+    )
   }
 
   private fun applyRun(builder: SpannableStringBuilder, run: JSONObject, blockOffset: Int, density: Float) {

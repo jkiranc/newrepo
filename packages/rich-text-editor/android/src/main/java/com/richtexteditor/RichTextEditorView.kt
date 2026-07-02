@@ -5,8 +5,11 @@ import android.text.Editable
 import android.text.Spannable
 import android.text.TextWatcher
 import android.text.style.ForegroundColorSpan
+import android.text.style.LeadingMarginSpan
+import android.text.style.RelativeSizeSpan
 import android.text.style.StrikethroughSpan
 import android.text.style.StyleSpan
+import android.text.style.TypefaceSpan
 import android.text.style.URLSpan
 import android.text.style.UnderlineSpan
 import android.graphics.Typeface
@@ -92,8 +95,28 @@ class RichTextEditorView(context: Context) : AppCompatEditText(context) {
   }
 
   fun setBlockType(tag: String) {
-    currentBlockTag = tag
+    val editable = text ?: return
+    val (start, end) = currentParagraphRange(editable, selectionStart)
+    suppressEvents = true
+    // Remove existing block-level spans over the paragraph before restyling (inline spans stay).
+    for (span in editable.getSpans(start, end, Any::class.java)) {
+      when (span) {
+        is RelativeSizeSpan, is TypefaceSpan, is LeadingMarginSpan, is BlockTagSpan ->
+          editable.removeSpan(span)
+      }
+    }
+    SpanApplier.styleBlock(editable, start, end, tag, null, 0, resources.displayMetrics.density)
+    suppressEvents = false
     emitDocumentChange()
+    notifySelectionChange(selectionStart, selectionEnd)
+  }
+
+  private fun currentParagraphRange(editable: Editable, cursor: Int): Pair<Int, Int> {
+    var start = cursor.coerceIn(0, editable.length)
+    var end = start
+    while (start > 0 && editable[start - 1] != '\n') start--
+    while (end < editable.length && editable[end] != '\n') end++
+    return start to end
   }
 
   fun insertEmbed(embedJson: String) {
@@ -167,28 +190,58 @@ class RichTextEditorView(context: Context) : AppCompatEditText(context) {
 
   // MARK: - Editable -> document
 
-  /** Walk spans in the Editable and coalesce contiguous equal-attribute ranges into runs. */
+  /** Split the buffer into paragraphs (on "\n") and reconstruct one block per paragraph. */
   private fun emitDocumentChange() {
     val editable = text ?: return
-    val runs = JSONArray()
+    val blocks = JSONArray()
+    var paragraphStart = 0
+    var index = 0
     var i = 0
-    while (i < editable.length) {
-      val next = editable.nextSpanTransition(i, editable.length, Any::class.java)
-      val run = runFor(editable, i, next)
+    while (i <= editable.length) {
+      if (i == editable.length || editable[i] == '\n') {
+        blocks.put(buildBlockJson(editable, paragraphStart, i, index))
+        index++
+        paragraphStart = i + 1
+      }
+      i++
+    }
+    val doc = JSONObject().put("blocks", blocks)
+    onDocumentChange?.invoke(doc.toString())
+  }
+
+  private fun buildBlockJson(editable: Editable, start: Int, end: Int, index: Int): JSONObject {
+    val runs = JSONArray()
+    var i = start
+    while (i < end) {
+      val next = editable.nextSpanTransition(i, end, Any::class.java)
+      val run = runFor(editable, i, next, start)
       if (run != null) runs.put(run)
       i = next
     }
 
-    val block = JSONObject()
-      .put("id", currentBlockId)
-      .put("tag", currentBlockTag)
-      .put("text", editable.toString())
-      .put("styleRuns", runs)
+    var tag = "p"
+    var listType: String? = null
+    var indentLevel = 0
+    if (end > start) {
+      editable.getSpans(start, end, BlockTagSpan::class.java).firstOrNull()?.let {
+        tag = it.tag
+        listType = it.listType
+        indentLevel = it.indentLevel
+      }
+    }
 
-    // Recover embeds from their chip spans so onChangeHtml round-trips custom tags.
+    val block = JSONObject()
+      .put("id", "b$index")
+      .put("tag", tag)
+      .put("text", editable.subSequence(start, end).toString())
+      .put("styleRuns", runs)
+    listType?.let { block.put("listType", it).put("listDepth", 0) }
+    if (indentLevel > 0) block.put("indentLevel", indentLevel)
+
+    // Recover embeds from their chip spans (offsets relative to the paragraph).
     val embeds = JSONArray()
-    for (span in editable.getSpans(0, editable.length, EmbedReplacementSpan::class.java)) {
-      val at = editable.getSpanStart(span)
+    for (span in editable.getSpans(start, end, EmbedReplacementSpan::class.java)) {
+      val at = editable.getSpanStart(span) - start
       embeds.put(
         JSONObject()
           .put("id", "e$at")
@@ -200,13 +253,11 @@ class RichTextEditorView(context: Context) : AppCompatEditText(context) {
       )
     }
     if (embeds.length() > 0) block.put("embeds", embeds)
-
-    val doc = JSONObject().put("blocks", JSONArray().put(block))
-    onDocumentChange?.invoke(doc.toString())
+    return block
   }
 
-  private fun runFor(editable: Editable, start: Int, end: Int): JSONObject? {
-    val run = JSONObject().put("start", start).put("length", end - start).put("tag", "span")
+  private fun runFor(editable: Editable, start: Int, end: Int, blockStart: Int): JSONObject? {
+    val run = JSONObject().put("start", start - blockStart).put("length", end - start).put("tag", "span")
     var styled = false
     for (span in editable.getSpans(start, end, Any::class.java)) {
       when (span) {

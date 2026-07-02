@@ -80,10 +80,11 @@ enum SpanApplier {
 
     /// Build the attributed string for a single block, applying its style runs.
     static func attributedString(for block: BlockNode) -> NSAttributedString {
-        let baseFont = font(for: block)
+        let baseFont = font(forTag: block.tag)
+        let paragraph = paragraphStyle(forTag: block.tag, listType: block.listType, indentLevel: block.indentLevel)
         let attributed = NSMutableAttributedString(
             string: block.text,
-            attributes: [.font: baseFont, .paragraphStyle: paragraphStyle(for: block)]
+            attributes: [.font: baseFont, .paragraphStyle: paragraph]
         )
 
         for run in block.styleRuns {
@@ -98,6 +99,20 @@ enum SpanApplier {
             let range = clampedRange(start: embed.offset, length: 1, in: block.text)
             guard range.length == 1 else { continue }
             attributed.addAttribute(.attachment, value: EmbedTextAttachment(embed: embed), range: range)
+        }
+
+        // Stamp block-level metadata across the paragraph so multi-block reconstruction can
+        // recover each paragraph's tag/list without it being part of the visible text.
+        if attributed.length > 0 {
+            let whole = NSRange(location: 0, length: attributed.length)
+            attributed.addAttribute(.rteBlockTag, value: block.tag, range: whole)
+            if let listType = block.listType, listType != "none" {
+                attributed.addAttribute(.rteListType, value: listType, range: whole)
+                attributed.addAttribute(.rteListDepth, value: block.listDepth ?? 0, range: whole)
+            }
+            if let indent = block.indentLevel {
+                attributed.addAttribute(.rteIndentLevel, value: indent, range: whole)
+            }
         }
         return attributed
     }
@@ -140,8 +155,10 @@ enum SpanApplier {
 
     // MARK: - Block styling
 
-    private static func font(for block: BlockNode) -> UIFont {
-        switch block.tag {
+    /// The base font for a block tag (headings, code). Exposed so the view can re-apply it when
+    /// `setBlockType` changes the current paragraph.
+    static func font(forTag tag: String) -> UIFont {
+        switch tag {
         case "h1": return .boldSystemFont(ofSize: 30)
         case "h2": return .boldSystemFont(ofSize: 26)
         case "h3": return .boldSystemFont(ofSize: 22)
@@ -153,9 +170,11 @@ enum SpanApplier {
         }
     }
 
-    private static func paragraphStyle(for block: BlockNode) -> NSParagraphStyle {
+    static func paragraphStyle(forTag tag: String, listType: String?, indentLevel: Int?) -> NSParagraphStyle {
         let style = NSMutableParagraphStyle()
-        let indent = CGFloat((block.indentLevel ?? 0) + (block.listType != nil ? 1 : 0)) * 20
+        let listIndent = (listType != nil && listType != "none") ? 1 : 0
+        let blockquoteIndent = tag == "blockquote" ? 1 : 0
+        let indent = CGFloat((indentLevel ?? 0) + listIndent + blockquoteIndent) * 20
         style.firstLineHeadIndent = indent
         style.headIndent = indent
         style.paragraphSpacing = 8
@@ -168,6 +187,15 @@ enum SpanApplier {
         let safeLength = max(0, min(length, count - safeStart))
         return NSRange(location: safeStart, length: safeLength)
     }
+}
+
+extension NSAttributedString.Key {
+    /// Block-level metadata stamped across each paragraph so multi-block reconstruction can
+    /// recover per-paragraph tag/list info without it being part of the visible text.
+    static let rteBlockTag = NSAttributedString.Key("rteBlockTag")
+    static let rteListType = NSAttributedString.Key("rteListType")
+    static let rteListDepth = NSAttributedString.Key("rteListDepth")
+    static let rteIndentLevel = NSAttributedString.Key("rteIndentLevel")
 }
 
 extension UIColor {

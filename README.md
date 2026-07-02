@@ -106,8 +106,11 @@ highlighted chip — with **zero** native changes.
 | 2 | iOS native view — inline style runs (bold/italic/underline/strike, toggle + typing attributes) | ✅ code / ⏳ on-device QA |
 | 3 | Android native view — parity (toggle engine + pending-style typing) | ✅ code / ⏳ on-device QA |
 | 4b | Embeds (image + chip) — native `<mention>` chip render, insert, tap, round-trip | ✅ code / ⏳ on-device QA |
-| 4a | Blocks: lists/quote/code markers + multi-block editing & reconstruction | ⬜ |
-| 5 | Toolbar polish, docs, first publish | ⬜ |
+| 4a | Multi-block editing & reconstruction + `setBlockType` (headings/quote/code); list indent | ✅ code / ⏳ on-device QA |
+| 5 | Toolbar (inline + block controls), publish setup (CHANGELOG, releasing), docs | ✅ code / ⏳ on-device QA |
+
+> Note: an **Android APK** CI workflow builds a sideloadable release APK artifact for on-device
+> testing (Actions tab → "Android APK" → download the artifact).
 
 See [`docs/architecture.md`](./docs/architecture.md) for the full design and
 [`docs/testing-checklist.md`](./docs/testing-checklist.md) for the manual native QA pass.
