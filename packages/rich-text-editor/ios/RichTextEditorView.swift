@@ -59,11 +59,22 @@ public final class RichTextEditorViewImpl: NSObject, UITextViewDelegate {
     @objc public func focus() { textView.becomeFirstResponder() }
     @objc public func blur() { textView.resignFirstResponder() }
 
-    @objc public func toggleInlineStyle(_ style: String) {
-        // Phase 2: mutate typingAttributes / selected range, then re-emit onDocumentChange.
-        // See docs/architecture.md — coalescing must mirror the JS bridge exactly.
-        applyInlineStyleToSelection(style)
-        emitDocumentChange()
+    @objc public func toggleInlineStyle(_ styleName: String) {
+        guard let style = InlineStyle(rawValue: styleName) else { return }
+        let selected = textView.selectedRange
+        if selected.length > 0 {
+            // Toggle across the selection, then re-emit the rebuilt document.
+            let mutable = NSMutableAttributedString(attributedString: textView.attributedText ?? NSAttributedString())
+            StyleEngine.toggle(style, in: mutable, range: selected)
+            textView.attributedText = mutable
+            textView.selectedRange = selected
+            emitDocumentChange()
+        } else {
+            // Collapsed caret: flip the pending typing attribute so new text inherits the style.
+            let (attrs, _) = StyleEngine.toggledTypingAttributes(textView.typingAttributes, style: style)
+            textView.typingAttributes = attrs
+        }
+        notifySelectionChange()
     }
 
     @objc public func setBlockType(_ tag: String) {
@@ -83,10 +94,7 @@ public final class RichTextEditorViewImpl: NSObject, UITextViewDelegate {
     }
 
     public func textViewDidChangeSelection(_ textView: UITextView) {
-        let range = textView.selectedRange
-        let styles = activeInlineStyles(at: range)
-        let blockId = currentBlockId(for: range)
-        onSelectionChangeBlock?(blockId, range.location, range.location + range.length, styles)
+        notifySelectionChange()
     }
 
     // MARK: - Change emission
@@ -153,9 +161,42 @@ public final class RichTextEditorViewImpl: NSObject, UITextViewDelegate {
             && a.backgroundColor == b.backgroundColor && a.link == b.link
     }
 
-    // MARK: - Selection helpers (stubs refined in later phases)
+    // MARK: - Selection
 
-    private func applyInlineStyleToSelection(_ style: String) { /* Phase 2 detail */ }
-    private func activeInlineStyles(at range: NSRange) -> String { "" }
+    private func notifySelectionChange() {
+        let range = textView.selectedRange
+        onSelectionChangeBlock?(
+            currentBlockId(for: range),
+            range.location,
+            range.location + range.length,
+            activeInlineStyles(at: range)
+        )
+    }
+
+    /// Comma-joined active styles. For a selection, styles active across the whole range; for a
+    /// collapsed caret, the pending typing attributes (so the toolbar reflects what you'll type).
+    private func activeInlineStyles(at range: NSRange) -> String {
+        let styles: [InlineStyle]
+        if range.length > 0, let text = textView.attributedText {
+            styles = InlineStyle.allCases.filter { StyleEngine.activeStyles(in: text, range: range).contains($0) }
+        } else {
+            styles = activeTypingStyles()
+        }
+        return styles.map { $0.rawValue }.joined(separator: ",")
+    }
+
+    private func activeTypingStyles() -> [InlineStyle] {
+        var result: [InlineStyle] = []
+        let attrs = textView.typingAttributes
+        if let font = attrs[.font] as? UIFont {
+            let traits = font.fontDescriptor.symbolicTraits
+            if traits.contains(.traitBold) { result.append(.bold) }
+            if traits.contains(.traitItalic) { result.append(.italic) }
+        }
+        if (attrs[.underlineStyle] as? NSNumber)?.intValue ?? 0 != 0 { result.append(.underline) }
+        if (attrs[.strikethroughStyle] as? NSNumber)?.intValue ?? 0 != 0 { result.append(.strikethrough) }
+        return result
+    }
+
     private func currentBlockId(for range: NSRange) -> String { document.blocks.first?.id ?? "b0" }
 }

@@ -103,7 +103,7 @@ highlighted chip — with **zero** native changes.
 |------:|-------|-------|
 | 0 | Monorepo scaffold, CI, tooling | ✅ |
 | 1 | JS core: parser, tag registry, native bridge, serializer, tests | ✅ |
-| 2 | iOS native view — inline style runs | 🚧 scaffold |
+| 2 | iOS native view — inline style runs (bold/italic/underline/strike, toggle + typing attributes) | ✅ code / ⏳ on-device QA |
 | 3 | Android native view — parity | 🚧 scaffold |
 | 4 | Blocks (lists/quote/code) + embeds (image/chip) | ⬜ |
 | 5 | Toolbar polish, docs, first publish | ⬜ |
