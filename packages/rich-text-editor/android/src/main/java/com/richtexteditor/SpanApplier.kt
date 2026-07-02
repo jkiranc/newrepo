@@ -91,13 +91,10 @@ object SpanApplier {
     if (end <= start || end > builder.length) return
     val flag = Spanned.SPAN_INCLUSIVE_EXCLUSIVE
 
-    if (run.optBoolean("bold") && run.optBoolean("italic")) {
-      builder.setSpan(StyleSpan(Typeface.BOLD_ITALIC), start, end, flag)
-    } else if (run.optBoolean("bold")) {
-      builder.setSpan(StyleSpan(Typeface.BOLD), start, end, flag)
-    } else if (run.optBoolean("italic")) {
-      builder.setSpan(StyleSpan(Typeface.ITALIC), start, end, flag)
-    }
+    // Separate single-trait spans (never BOLD_ITALIC) so StyleEngine can toggle each
+    // independently and split them cleanly on removal. Overlapping spans combine on render.
+    if (run.optBoolean("bold")) builder.setSpan(StyleSpan(Typeface.BOLD), start, end, flag)
+    if (run.optBoolean("italic")) builder.setSpan(StyleSpan(Typeface.ITALIC), start, end, flag)
     if (run.optBoolean("underline")) builder.setSpan(UnderlineSpan(), start, end, flag)
     if (run.optBoolean("strikethrough")) builder.setSpan(StrikethroughSpan(), start, end, flag)
 

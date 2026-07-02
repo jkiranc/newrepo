@@ -17,11 +17,12 @@ import org.json.JSONObject
 // RichTextEditorView
 //
 // The Android native view. Owns an EditText and the live Editable buffer. Like iOS, it only
-// understands the native document model (applied by SpanApplier) — never HTML/tags.
+// understands the native document model (applied by SpanApplier); HTML/tags live in JS.
 //
-// Phase-3 scaffold: inline style runs render; a change listener reconstructs the document and
-// hands it back to the view manager, which forwards it as a Fabric event. Block/embed
-// reconstruction and command handling are stubbed where noted for later phases.
+// Phase 3 brings parity with the iOS Phase-2 engine: toggle bold/italic/underline/strike over
+// a selection, or — for a collapsed caret — track "pending styles" that are applied to newly
+// typed characters (the Android equivalent of iOS typingAttributes). Blocks/embeds and command
+// completeness follow in Phases 4+.
 // -------------------------------------------------------------------------------------------
 class RichTextEditorView(context: Context) : AppCompatEditText(context) {
 
@@ -34,13 +35,23 @@ class RichTextEditorView(context: Context) : AppCompatEditText(context) {
   private var seeded = false
   private var suppressEvents = false
 
+  // Collapsed-caret styling: styles to apply to the next typed characters.
+  private val pendingStyles = mutableSetOf<InlineStyle>()
+  private var lastInsertStart = -1
+  private var lastInsertCount = 0
+
   init {
     setPadding(24, 24, 24, 24)
     addTextChangedListener(object : TextWatcher {
       override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
-      override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+      override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+        lastInsertStart = start
+        lastInsertCount = count
+      }
       override fun afterTextChanged(s: Editable?) {
-        if (!suppressEvents) emitDocumentChange()
+        if (suppressEvents) return
+        applyPendingStyles()
+        emitDocumentChange()
       }
     })
   }
@@ -63,9 +74,19 @@ class RichTextEditorView(context: Context) : AppCompatEditText(context) {
     suppressEvents = false
   }
 
-  fun toggleInlineStyle(style: String) {
-    // Phase 3: apply/remove the matching span across the current selection, then re-emit.
-    emitDocumentChange()
+  fun toggleInlineStyle(styleName: String) {
+    val style = InlineStyle.fromWire(styleName) ?: return
+    val editable = text ?: return
+    val start = selectionStart
+    val end = selectionEnd
+    if (end > start) {
+      StyleEngine.toggle(style, editable, start, end)
+      emitDocumentChange()
+    } else {
+      // Flip the pending style so the next typed characters inherit it.
+      if (!pendingStyles.remove(style)) pendingStyles.add(style)
+    }
+    notifySelectionChange(start, end)
   }
 
   fun setBlockType(tag: String) {
@@ -80,7 +101,46 @@ class RichTextEditorView(context: Context) : AppCompatEditText(context) {
 
   override fun onSelectionChanged(selStart: Int, selEnd: Int) {
     super.onSelectionChanged(selStart, selEnd)
-    onSelectionChangeListener?.invoke(currentBlockId, selStart, selEnd, activeStyles(selStart, selEnd))
+    if (suppressEvents) return
+    if (selStart == selEnd) {
+      // Caret moved: refresh pending styles from what's active just before the caret.
+      pendingStyles.clear()
+      pendingStyles.addAll(stylesAt(selStart))
+    }
+    notifySelectionChange(selStart, selEnd)
+  }
+
+  // MARK: - Typing inheritance
+
+  private fun applyPendingStyles() {
+    val editable = text ?: return
+    if (pendingStyles.isEmpty() || lastInsertCount <= 0) return
+    val start = lastInsertStart
+    val end = minOf(editable.length, start + lastInsertCount)
+    if (end <= start) return
+    suppressEvents = true
+    for (style in pendingStyles) StyleEngine.setStyle(style, true, editable, start, end)
+    suppressEvents = false
+    lastInsertCount = 0
+  }
+
+  private fun stylesAt(pos: Int): Set<InlineStyle> {
+    val editable = text ?: return emptySet()
+    if (pos <= 0) return emptySet()
+    return StyleEngine.activeStyles(editable, pos - 1, pos)
+  }
+
+  // MARK: - Selection reporting
+
+  private fun notifySelectionChange(start: Int, end: Int) {
+    onSelectionChangeListener?.invoke(currentBlockId, start, end, activeStylesString(start, end))
+  }
+
+  private fun activeStylesString(start: Int, end: Int): String {
+    val editable = text ?: return ""
+    val active: Set<InlineStyle> =
+      if (end > start) StyleEngine.activeStyles(editable, start, end) else pendingStyles.toSet()
+    return InlineStyle.values().filter { it in active }.joinToString(",") { it.wireName }
   }
 
   // MARK: - Editable -> document
@@ -89,7 +149,6 @@ class RichTextEditorView(context: Context) : AppCompatEditText(context) {
   private fun emitDocumentChange() {
     val editable = text ?: return
     val runs = JSONArray()
-    // Simplified reconstruction for the scaffold: collect known inline spans into runs.
     var i = 0
     while (i < editable.length) {
       val next = editable.nextSpanTransition(i, editable.length, Any::class.java)
@@ -112,10 +171,9 @@ class RichTextEditorView(context: Context) : AppCompatEditText(context) {
     var styled = false
     for (span in editable.getSpans(start, end, Any::class.java)) {
       when (span) {
-        is StyleSpan -> when (span.style) {
-          Typeface.BOLD -> { run.put("bold", true); styled = true }
-          Typeface.ITALIC -> { run.put("italic", true); styled = true }
-          Typeface.BOLD_ITALIC -> { run.put("bold", true).put("italic", true); styled = true }
+        is StyleSpan -> {
+          if (span.style and Typeface.BOLD != 0) { run.put("bold", true); styled = true }
+          if (span.style and Typeface.ITALIC != 0) { run.put("italic", true); styled = true }
         }
         is UnderlineSpan -> { run.put("underline", true); styled = true }
         is StrikethroughSpan -> { run.put("strikethrough", true); styled = true }
@@ -126,22 +184,5 @@ class RichTextEditorView(context: Context) : AppCompatEditText(context) {
       }
     }
     return if (styled) run else null
-  }
-
-  private fun activeStyles(start: Int, end: Int): String {
-    val editable = text ?: return ""
-    val styles = mutableListOf<String>()
-    for (span in editable.getSpans(start, end, Any::class.java)) {
-      when (span) {
-        is StyleSpan -> when (span.style) {
-          Typeface.BOLD -> styles.add("bold")
-          Typeface.ITALIC -> styles.add("italic")
-          Typeface.BOLD_ITALIC -> { styles.add("bold"); styles.add("italic") }
-        }
-        is UnderlineSpan -> styles.add("underline")
-        is StrikethroughSpan -> styles.add("strikethrough")
-      }
-    }
-    return styles.distinct().joinToString(",")
   }
 }
