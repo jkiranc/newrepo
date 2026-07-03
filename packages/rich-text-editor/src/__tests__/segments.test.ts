@@ -41,7 +41,7 @@ describe('segments', () => {
   it('serializes an edited table segment', () => {
     const segs: Segment[] = [
       { type: 'text', id: 't0', doc: { blocks: [] } },
-      { type: 'table', id: 'tbl0', rows: [['H'], ['v']], header: true },
+      { type: 'table', id: 'tbl0', rows: [['H'], ['v']], header: true, headerColumn: false },
     ];
     expect(segmentsToHtml(segs)).toBe('<table><tr><th>H</th></tr><tr><td>v</td></tr></table>');
   });

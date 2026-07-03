@@ -8,7 +8,7 @@ import React, {
 } from 'react';
 import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 
-import { EditableTable } from './EditableTable/EditableTable';
+import { EditableTable, type EditableTableState } from './EditableTable/EditableTable';
 import { TextSegmentEditor, type TextSegmentRef } from './TextSegmentEditor';
 import { htmlToDocument } from './html/nativeBridge';
 import {
@@ -75,7 +75,8 @@ export interface RichTextEditorRef {
   redo: () => void;
 }
 
-type LatestValue = RichTextDocument | { rows: string[][]; header: boolean };
+type TableLatest = { rows: string[][]; header: boolean; headerColumn: boolean };
+type LatestValue = RichTextDocument | TableLatest;
 
 export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>(
   function RichTextEditor(props, ref) {
@@ -113,7 +114,7 @@ export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>
     // Seed `latest` and the initial active segment on first render.
     useMemo(() => {
       for (const seg of initialSegments) {
-        latest.current.set(seg.id, seg.type === 'text' ? seg.doc : { rows: seg.rows, header: seg.header });
+        latest.current.set(seg.id, seg.type === 'text' ? seg.doc : { rows: seg.rows, header: seg.header, headerColumn: seg.headerColumn });
         if (seg.type === 'text' && activeTextId.current == null) {
           activeTextId.current = seg.id;
         }
@@ -127,8 +128,8 @@ export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>
           const l = latest.current.get(seg.id);
           if (!l) return seg;
           if (seg.type === 'text') return { ...seg, doc: l as RichTextDocument };
-          const t = l as { rows: string[][]; header: boolean };
-          return { ...seg, rows: t.rows, header: t.header };
+          const t = l as TableLatest;
+          return { ...seg, rows: t.rows, header: t.header, headerColumn: t.headerColumn };
         });
         onChangeHtml?.(segmentsToHtml(merged, registry));
       },
@@ -147,8 +148,8 @@ export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>
     );
 
     const handleTableChange = useCallback(
-      (id: string, rows: string[][], header: boolean) => {
-        latest.current.set(id, { rows, header });
+      (id: string, state: EditableTableState) => {
+        latest.current.set(id, state);
         emitHtml(segmentsRef.current);
       },
       [emitHtml],
@@ -158,7 +159,11 @@ export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>
       (rows = 2, cols = 2) => {
         const table = newTableSegment(rows, cols, true);
         const trailing = newTextSegment();
-        latest.current.set(table.id, { rows: table.rows, header: table.header });
+        latest.current.set(table.id, {
+          rows: table.rows,
+          header: table.header,
+          headerColumn: table.headerColumn,
+        });
         latest.current.set(trailing.id, trailing.doc);
         // Insert the table (and a text segment to type after it) right after the active segment.
         const prev = segmentsRef.current;
@@ -225,8 +230,8 @@ export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>
             const l = latest.current.get(seg.id);
             if (!l) return seg;
             if (seg.type === 'text') return { ...seg, doc: l as RichTextDocument };
-            const t = l as { rows: string[][]; header: boolean };
-            return { ...seg, rows: t.rows, header: t.header };
+            const t = l as TableLatest;
+            return { ...seg, rows: t.rows, header: t.header, headerColumn: t.headerColumn };
           });
           return segmentsToHtml(merged, registry);
         },
@@ -235,7 +240,7 @@ export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>
           latest.current.clear();
           activeTextId.current = null;
           for (const seg of segs) {
-            latest.current.set(seg.id, seg.type === 'text' ? seg.doc : { rows: seg.rows, header: seg.header });
+            latest.current.set(seg.id, seg.type === 'text' ? seg.doc : { rows: seg.rows, header: seg.header, headerColumn: seg.headerColumn });
             if (seg.type === 'text' && activeTextId.current == null) activeTextId.current = seg.id;
           }
           applySegments(segs);
@@ -271,11 +276,12 @@ export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>
               key={seg.id}
               rows={seg.rows}
               header={seg.header}
+              headerColumn={seg.headerColumn}
               editable={editable}
               onFocus={() => {
                 activeTextId.current = null;
               }}
-              onChange={(rows, header) => handleTableChange(seg.id, rows, header)}
+              onChange={(state) => handleTableChange(seg.id, state)}
               onDelete={() => removeSegment(seg.id)}
             />
           ) : (

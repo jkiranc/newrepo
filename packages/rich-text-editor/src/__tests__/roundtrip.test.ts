@@ -116,9 +116,23 @@ describe('round-trip validation of all toolbar options', () => {
   });
 
   describe('tables', () => {
-    it('round-trips a header table', () => {
+    it('round-trips a header-row table', () => {
       const html =
         '<table><tr><th>A</th><th>B</th></tr><tr><td>1</td><td>2</td></tr></table>';
+      expect(rt(html)).toBe(html);
+    });
+    it('round-trips a header-column table', () => {
+      const html =
+        '<table><tr><th>a</th><td>1</td></tr><tr><th>b</th><td>2</td></tr></table>';
+      expect(rt(html)).toBe(html);
+    });
+    it('round-trips a table with both header row and header column', () => {
+      const html =
+        '<table><tr><th>·</th><th>H</th></tr><tr><th>r</th><td>1</td></tr></table>';
+      expect(rt(html)).toBe(html);
+    });
+    it('round-trips a plain (no-header) table', () => {
+      const html = '<table><tr><td>a</td><td>b</td></tr></table>';
       expect(rt(html)).toBe(html);
     });
   });

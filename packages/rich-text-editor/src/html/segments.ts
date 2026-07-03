@@ -28,7 +28,10 @@ export interface TableSegment {
   type: 'table';
   id: string;
   rows: string[][];
+  /** First row is a header. */
   header: boolean;
+  /** First column is a header. */
+  headerColumn: boolean;
 }
 
 export type Segment = TextSegment | TableSegment;
@@ -76,6 +79,7 @@ export function blocksToSegments(blocks: BlockNode[]): Segment[] {
         id: `tbl${tableId++}`,
         rows: parseRows(embed),
         header: embed.data?.header === 'true',
+        headerColumn: embed.data?.headerColumn === 'true',
       });
     } else {
       pending.push(block);
@@ -104,7 +108,7 @@ export function segmentsToHtml(
   return segments
     .map((seg) =>
       seg.type === 'table'
-        ? rowsToTableHtml(seg.rows, seg.header)
+        ? rowsToTableHtml(seg.rows, seg.header, seg.headerColumn)
         : documentToHtml(seg.doc, registry),
     )
     .join('');
@@ -117,6 +121,7 @@ export function newTableSegment(rows = 2, cols = 2, header = true): TableSegment
     id: `tbl-${Date.now()}`,
     rows: Array.from({ length: rows }, () => Array.from({ length: cols }, () => '')),
     header,
+    headerColumn: false,
   };
 }
 

@@ -307,9 +307,10 @@ function emptyStyle(): RunStyle {
   return { tag: '' };
 }
 
-/** Build a read-only table embed from a `<table>` node, flattening cells to plain text. */
+/** Build a table embed from a `<table>` node, flattening cells to plain text. */
 function tableEmbedFromNode(node: HtmlNode, ids: IdCounter): EmbedPlaceholder {
   const rows: string[][] = [];
+  const firstCellIsTh: boolean[] = [];
   let header = false;
   const walkRows = (n: HtmlNode) => {
     if (!isElement(n)) {
@@ -323,29 +324,44 @@ function tableEmbedFromNode(node: HtmlNode, ids: IdCounter): EmbedPlaceholder {
         walkRows(child);
       } else if (child.tag === 'tr') {
         const cells: string[] = [];
-        let rowHasHeader = false;
+        let firstIsTh = false;
+        let allTh = true;
         for (const cell of child.children) {
           if (isElement(cell) && (cell.tag === 'td' || cell.tag === 'th')) {
             if (cell.tag === 'th') {
-              rowHasHeader = true;
+              if (cells.length === 0) {
+                firstIsTh = true;
+              }
+            } else {
+              allTh = false;
             }
             cells.push(collapseWhitespace(extractText(cell)).trim());
           }
         }
-        if (rows.length === 0 && rowHasHeader) {
+        // A header row is a row whose cells are *all* <th> (a lone <th> in column 0 is a header
+        // column, not a header row).
+        if (rows.length === 0 && cells.length > 0 && allTh) {
           header = true;
         }
+        firstCellIsTh.push(firstIsTh);
         rows.push(cells);
       }
     }
   };
   walkRows(node);
+  // A header column = every body row's first cell is a <th> (ignore the header row itself).
+  const body = firstCellIsTh.slice(header ? 1 : 0);
+  const headerColumn = body.length > 0 && body.every(Boolean);
   return {
     id: `e${ids.embed++}`,
     offset: 0,
     tag: 'table',
     kind: 'table',
-    data: { rows: JSON.stringify(rows), header: header ? 'true' : 'false' },
+    data: {
+      rows: JSON.stringify(rows),
+      header: header ? 'true' : 'false',
+      headerColumn: headerColumn ? 'true' : 'false',
+    },
   };
 }
 
