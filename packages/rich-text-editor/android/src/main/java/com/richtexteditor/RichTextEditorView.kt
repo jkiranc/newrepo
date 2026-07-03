@@ -87,6 +87,7 @@ class RichTextEditorView(context: Context) : AppCompatEditText(context) {
       override fun afterTextChanged(s: Editable?) {
         if (!initialized || suppressEvents) return
         applyPendingStyles()
+        stripCollapsedBlockSpans()
         emitDocumentChange()
         // Content may have grown/shrunk; report the new height once layout settles.
         post { reportContentHeight() }
@@ -113,6 +114,26 @@ class RichTextEditorView(context: Context) : AppCompatEditText(context) {
   override fun onLayout(changed: Boolean, left: Int, top: Int, right: Int, bottom: Int) {
     super.onLayout(changed, left, top, right, bottom)
     if (initialized) reportContentHeight()
+  }
+
+  /**
+   * Remove block-level marker spans (list bullets/numbers, heading size, indent, alignment) that
+   * have collapsed to a zero-length range after their text was deleted. Otherwise a leftover
+   * ListMarkerSpan keeps drawing a ghost bullet/number at offset 0 — e.g. after Select-All +
+   * Delete the buffer is empty but the old markers still paint.
+   */
+  private fun stripCollapsedBlockSpans() {
+    val editable = text ?: return
+    for (span in editable.getSpans(0, editable.length, Any::class.java)) {
+      when (span) {
+        is ListMarkerSpan, is BlockTagSpan, is LeadingMarginSpan, is AlignmentSpan,
+        is HeadingSizeSpan, is TypefaceSpan -> {
+          if (editable.getSpanStart(span) == editable.getSpanEnd(span)) {
+            editable.removeSpan(span)
+          }
+        }
+      }
+    }
   }
 
   fun applyInitialDocument(json: String) {
