@@ -559,13 +559,18 @@ class RichTextEditorView(context: Context) : AppCompatEditText(context) {
     var align: String? = null
     var checked = false
     if (end > start) {
-      editable.getSpans(start, end, BlockTagSpan::class.java).firstOrNull()?.let {
-        tag = it.tag
-        listType = it.listType
-        indentLevel = it.indentLevel
-        align = it.align
-        checked = it.checked
-      }
+      // Only honor a block span that actually starts inside this paragraph. A span that leaked
+      // in from the paragraph above (its start is < this paragraph's start) must not relabel
+      // this line — that was the "heading carries onto the next line" bug.
+      editable.getSpans(start, end, BlockTagSpan::class.java)
+        .firstOrNull { editable.getSpanStart(it) in start until end }
+        ?.let {
+          tag = it.tag
+          listType = it.listType
+          indentLevel = it.indentLevel
+          align = it.align
+          checked = it.checked
+        }
     }
 
     val block = JSONObject()
