@@ -54,6 +54,8 @@ export function EditableTable({
 }: EditableTableProps) {
   const [grid, setGrid] = useState<string[][]>(() => rectangular(rows));
   const [hasHeader, setHasHeader] = useState(header);
+  // Available width, so cells stretch to fill a narrow table and scroll only when too wide.
+  const [containerWidth, setContainerWidth] = useState(0);
   // The most recently focused cell — insert/delete act relative to it (else the last row/col).
   const focused = useRef<{ r: number; c: number }>({ r: 0, c: 0 });
 
@@ -70,6 +72,11 @@ export function EditableTable({
 
   const rowCount = grid.length;
   const colCount = grid[0]?.length ?? 0;
+  const MIN_CELL_WIDTH = 110;
+  const cellWidth =
+    containerWidth > 0 && colCount > 0
+      ? Math.max(MIN_CELL_WIDTH, Math.floor((containerWidth - 4) / colCount))
+      : MIN_CELL_WIDTH;
 
   const addRow = () => {
     const at = Math.min(focused.current.r + 1, rowCount);
@@ -116,7 +123,10 @@ export function EditableTable({
   };
 
   return (
-    <View style={[styles.wrap, style]}>
+    <View
+      style={[styles.wrap, style]}
+      onLayout={(e) => setContainerWidth(e.nativeEvent.layout.width)}
+    >
       <ScrollView horizontal showsHorizontalScrollIndicator contentContainerStyle={styles.gridPad}>
         <View>
           {grid.map((row, r) => (
@@ -136,7 +146,7 @@ export function EditableTable({
                       onFocus?.();
                     }}
                     onChangeText={(t) => setCell(r, c, t)}
-                    style={[styles.cell, isHeader && styles.headerCell]}
+                    style={[styles.cell, { width: cellWidth }, isHeader && styles.headerCell]}
                   />
                 );
               })}

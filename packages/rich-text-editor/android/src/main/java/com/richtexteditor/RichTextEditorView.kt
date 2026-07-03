@@ -68,6 +68,10 @@ class RichTextEditorView(context: Context) : AppCompatEditText(context) {
 
   init {
     setPadding(24, 24, 24, 24)
+    // Remove the default Material underline/background so stacked segments don't each draw a
+    // thick line between them.
+    background = null
+    isVerticalScrollBarEnabled = false
     // Top-align content (EditText centers vertically when its height exceeds the text) and make
     // it a multi-line editor so Enter inserts newlines and text wraps from the top.
     gravity = Gravity.TOP or Gravity.START
