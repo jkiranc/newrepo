@@ -86,8 +86,16 @@ serialization. See `src/registry/builtInTags.ts` for the built-in definitions.
 
 `b`/`strong`, `i`/`em`, `u`, `s`/`strike`/`del`, `sup`, `sub`, `code`, `a`,
 `span[style]`, `p`/`div`, `h1`–`h6`, `blockquote`, `pre`, `li`, `ul`/`ol`
-(including `<li data-checked>` checklists), `img`, `br`, and read-only `table`
-(rows/cells flattened to text; the first `th` row renders as a header).
+(including `<li data-checked>` checklists), `img`, `br`, and `table`.
+
+## Inline blocks (editable tables)
+
+Tables can't render inside the single native text view, so the editor is composed of
+**segments**: runs of flowing text (each backed by the native editor) with editable tables
+(`EditableTable`) interleaved between them. All segments share one `Toolbar`, which targets
+whichever text segment is focused. `insertTable()` adds an editable table (type in cells; the
+table's own control bar adds/removes rows and columns) followed by a fresh text segment. The
+whole thing still round-trips to/from a single HTML string via `getHTML()` / `initialHtml`.
 
 ## Development
 

@@ -10,6 +10,20 @@ export type {
 export { Toolbar } from './Toolbar/Toolbar';
 export type { ToolbarProps } from './Toolbar/Toolbar';
 
+// Editable table block (rendered as its own segment between text)
+export { EditableTable } from './EditableTable/EditableTable';
+export type { EditableTableProps } from './EditableTable/EditableTable';
+
+// Inline-blocks segmentation model (advanced use)
+export {
+  htmlToSegments,
+  blocksToSegments,
+  segmentsToHtml,
+  type Segment,
+  type TextSegment,
+  type TableSegment,
+} from './html/segments';
+
 // Tag registry (the extension point)
 export {
   TagRegistry,

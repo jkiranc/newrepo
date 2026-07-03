@@ -84,10 +84,8 @@ function tableRows(embed: EmbedPlaceholder): string[][] {
   }
 }
 
-/** Serialize a `kind: 'table'` embed to a `<table>` element (read-only tables). */
-function serializeTable(embed: EmbedPlaceholder): string {
-  const rows = tableRows(embed);
-  const header = embed.data?.header === 'true';
+/** Serialize a grid of cell strings to a `<table>` element (first row optionally a header). */
+export function rowsToTableHtml(rows: string[][], header: boolean): string {
   let out = '<table>';
   rows.forEach((row, r) => {
     const cellTag = header && r === 0 ? 'th' : 'td';
@@ -99,6 +97,11 @@ function serializeTable(embed: EmbedPlaceholder): string {
   });
   out += '</table>';
   return out;
+}
+
+/** Serialize a `kind: 'table'` embed to a `<table>` element. */
+function serializeTable(embed: EmbedPlaceholder): string {
+  return rowsToTableHtml(tableRows(embed), embed.data?.header === 'true');
 }
 
 /** True if a block is exactly one table embed (so it serializes as a bare `<table>`). */

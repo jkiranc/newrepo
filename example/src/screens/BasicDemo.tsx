@@ -14,11 +14,14 @@ const INITIAL_HTML = `
 <ul><li>bullet one</li><li>bullet two</li></ul>
 <ol><li>first</li><li>second</li></ol>
 <blockquote>A block quote.</blockquote>
+<p>Below is an editable table — tap a cell to type, and use its control bar to add or
+remove rows and columns:</p>
 <table>
   <tr><th>Feature</th><th>iOS</th><th>Android</th></tr>
   <tr><td>Bold</td><td>Yes</td><td>Yes</td></tr>
-  <tr><td>Tables</td><td>Read-only</td><td>Read-only</td></tr>
+  <tr><td>Tables</td><td>Editable</td><td>Editable</td></tr>
 </table>
+<p>Text after the table lives in its own segment.</p>
 `;
 
 export function BasicDemo() {
@@ -29,13 +32,15 @@ export function BasicDemo() {
   return (
     <View style={styles.container}>
       <Toolbar editorRef={editorRef} activeStyles={activeStyles} />
-      <RichTextEditor
-        ref={editorRef}
-        initialHtml={INITIAL_HTML}
-        onChangeHtml={setHtml}
-        onSelectionChange={(s) => setActiveStyles(s.activeStyles)}
-        style={styles.editor}
-      />
+      <ScrollView style={styles.editorScroll} keyboardShouldPersistTaps="handled">
+        <RichTextEditor
+          ref={editorRef}
+          initialHtml={INITIAL_HTML}
+          onChangeHtml={setHtml}
+          onSelectionChange={(s) => setActiveStyles(s.activeStyles)}
+          style={styles.editor}
+        />
+      </ScrollView>
       <Text style={styles.caption}>Serialized HTML (live):</Text>
       <ScrollView style={styles.htmlBox}>
         <Text style={styles.htmlText}>{html}</Text>
@@ -46,7 +51,8 @@ export function BasicDemo() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  editor: { flex: 1, fontSize: 16 },
+  editorScroll: { flex: 1 },
+  editor: { fontSize: 16 },
   caption: { paddingHorizontal: 12, paddingTop: 8, fontSize: 12, color: '#888' },
   htmlBox: { maxHeight: 140, margin: 12, padding: 8, backgroundColor: '#f5f5f5', borderRadius: 6 },
   htmlText: { fontFamily: 'Courier', fontSize: 12, color: '#333' },

@@ -4,18 +4,22 @@ import React, {
   useImperativeHandle,
   useMemo,
   useRef,
+  useState,
 } from 'react';
-import { StyleSheet, type StyleProp, type ViewStyle } from 'react-native';
+import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 
-import RichTextEditorView, {
-  Commands,
-  type NativeProps,
-} from './RichTextEditorNativeComponent';
+import { EditableTable } from './EditableTable/EditableTable';
+import { TextSegmentEditor, type TextSegmentRef } from './TextSegmentEditor';
 import { htmlToDocument } from './html/nativeBridge';
-import { documentToHtml } from './html/serializer';
+import {
+  htmlToSegments,
+  newTableSegment,
+  newTextSegment,
+  segmentsToHtml,
+  type Segment,
+} from './html/segments';
 import { defaultTagRegistry, TagRegistry } from './registry/TagRegistry';
 import {
-  EMPTY_DOCUMENT,
   type Alignment,
   type EmbedPlaceholder,
   type InlineStyleName,
@@ -35,16 +39,15 @@ export interface RichTextEditorProps {
   initialHtml?: string;
   editable?: boolean;
   placeholder?: string;
-  /** The tag registry to use for HTML ⇄ document translation. Defaults to the global one. */
   registry?: TagRegistry;
-  /** Called (debounced) whenever content changes, with the serialized HTML. */
+  /** Called whenever any segment (text or table) changes, with the reassembled HTML. */
   onChangeHtml?: (html: string) => void;
   onSelectionChange?: (selection: SelectionChange) => void;
   onEmbedPress?: (tag: string, data: Record<string, string>) => void;
   style?: StyleProp<ViewStyle>;
 }
 
-/** Imperative handle for toolbars and programmatic control. */
+/** Imperative handle for toolbars and programmatic control. Delegates to the active segment. */
 export interface RichTextEditorRef {
   focus: () => void;
   blur: () => void;
@@ -57,31 +60,22 @@ export interface RichTextEditorRef {
   toggleStrikethrough: () => void;
   setBlockType: (tag: string) => void;
   setAlignment: (align: Alignment) => void;
-  /** Set the selection's text color as `#RRGGBB`; pass null/'' to clear. */
   setTextColor: (color: string | null) => void;
-  /** Set the selection's link href; pass null/'' to remove the link. */
   setLink: (url: string | null) => void;
-  /** Insert `text` linked to `url` at the caret (for links with custom display text). */
   insertLink: (text: string, url: string) => void;
-  /** Set the selection's font size in points; pass null/0 to clear back to the default. */
   setFontSize: (size: number | null) => void;
-  /** Adjust the current paragraph's indent by `delta` (e.g. +1 / -1). */
   adjustIndent: (delta: number) => void;
-  /** Toggle the current paragraph's list type ('bullet' | 'ordered' | 'check' | 'none'). */
   toggleList: (listType: ListType) => void;
-  /** Insert plain text (e.g. an emoji) at the caret. */
   insertText: (text: string) => void;
-  /** Insert an image embed by URL at the caret. */
   insertImage: (src: string) => void;
-  /**
-   * Insert a read-only table with `rows` × `cols` cells at the caret. The first row is a
-   * header. Optionally seed cell text as a row-major grid; missing cells render empty.
-   */
-  insertTable: (rows: number, cols: number, cells?: string[][]) => void;
+  /** Insert a new editable table block after the active text segment. */
+  insertTable: (rows?: number, cols?: number) => void;
   insertEmbed: (embed: EmbedPlaceholder) => void;
   undo: () => void;
   redo: () => void;
 }
+
+type LatestValue = RichTextDocument | { rows: string[][]; header: boolean };
 
 export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>(
   function RichTextEditor(props, ref) {
@@ -96,202 +90,183 @@ export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>
       style,
     } = props;
 
-    const nativeRef = useRef<React.ComponentRef<typeof RichTextEditorView>>(null);
-    // Cache of the latest document so getHTML() is synchronous (no native round trip).
-    const latestDoc = useRef<RichTextDocument>(EMPTY_DOCUMENT);
-    // Undo/redo history of serialized documents (no native undo API needed).
-    const history = useRef<string[]>([]);
-    const historyIndex = useRef(-1);
-    const isRestoring = useRef(false);
-
-    const initialDocumentJson = useMemo(() => {
-      const doc = initialHtml ? htmlToDocument(initialHtml, registry) : EMPTY_DOCUMENT;
-      latestDoc.current = doc;
-      const json = JSON.stringify(doc);
-      history.current = [json];
-      historyIndex.current = 0;
-      return json;
-    }, [initialHtml, registry]);
-
-    const handleDocumentChange = useCallback<NonNullable<NativeProps['onDocumentChange']>>(
-      (event) => {
-        try {
-          const json = event.nativeEvent.documentJson;
-          const doc = JSON.parse(json) as RichTextDocument;
-          latestDoc.current = doc;
-          if (isRestoring.current) {
-            isRestoring.current = false;
-          } else {
-            // Record a new history entry, discarding any redo tail, capped at 100.
-            const next = history.current.slice(0, historyIndex.current + 1);
-            next.push(json);
-            if (next.length > 100) {
-              next.shift();
-            }
-            history.current = next;
-            historyIndex.current = next.length - 1;
-          }
-          onChangeHtml?.(documentToHtml(doc, registry));
-        } catch {
-          // Ignore malformed payloads rather than crashing the editor.
-        }
-      },
-      [onChangeHtml, registry],
+    const initialSegments = useMemo(
+      () => htmlToSegments(initialHtml ?? '', registry),
+      // Seed once.
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+      [],
     );
 
-    const restoreSnapshot = useCallback(
-      (json: string) => {
-        if (!nativeRef.current) {
-          return;
-        }
-        isRestoring.current = true;
-        latestDoc.current = JSON.parse(json) as RichTextDocument;
-        Commands.setDocument(nativeRef.current, json);
-        onChangeHtml?.(documentToHtml(latestDoc.current, registry));
-      },
-      [onChangeHtml, registry],
-    );
+    const [segments, setSegments] = useState<Segment[]>(initialSegments);
 
-    const handleSelectionChange = useCallback<
-      NonNullable<NativeProps['onSelectionChange']>
-    >(
-      (event) => {
-        const { blockId, start, end, activeStyles } = event.nativeEvent;
-        onSelectionChange?.({
-          blockId,
-          start,
-          end,
-          activeStyles: activeStyles
-            ? (activeStyles.split(',').filter(Boolean) as InlineStyleName[])
-            : [],
+    // Per-segment refs and latest content (kept out of state so keystrokes don't re-render).
+    const segRefs = useRef(new Map<string, TextSegmentRef | null>());
+    const latest = useRef(new Map<string, LatestValue>());
+    const activeTextId = useRef<string | null>(null);
+    // Mirror of `segments` for reading current order inside change callbacks without stale state.
+    const segmentsRef = useRef<Segment[]>(initialSegments);
+    const applySegments = useCallback((next: Segment[]) => {
+      segmentsRef.current = next;
+      setSegments(next);
+    }, []);
+
+    // Seed `latest` and the initial active segment on first render.
+    useMemo(() => {
+      for (const seg of initialSegments) {
+        latest.current.set(seg.id, seg.type === 'text' ? seg.doc : { rows: seg.rows, header: seg.header });
+        if (seg.type === 'text' && activeTextId.current == null) {
+          activeTextId.current = seg.id;
+        }
+      }
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    const emitHtml = useCallback(
+      (segs: Segment[]) => {
+        const merged: Segment[] = segs.map((seg) => {
+          const l = latest.current.get(seg.id);
+          if (!l) return seg;
+          if (seg.type === 'text') return { ...seg, doc: l as RichTextDocument };
+          const t = l as { rows: string[][]; header: boolean };
+          return { ...seg, rows: t.rows, header: t.header };
         });
+        onChangeHtml?.(segmentsToHtml(merged, registry));
       },
-      [onSelectionChange],
+      [onChangeHtml, registry],
     );
 
-    const handleEmbedPress = useCallback<NonNullable<NativeProps['onEmbedPress']>>(
-      (event) => {
-        let data: Record<string, string> = {};
-        try {
-          data = JSON.parse(event.nativeEvent.dataJson) as Record<string, string>;
-        } catch {
-          // keep empty
-        }
-        onEmbedPress?.(event.nativeEvent.tag, data);
+    const active = () =>
+      activeTextId.current ? segRefs.current.get(activeTextId.current) ?? null : null;
+
+    const handleTextChange = useCallback(
+      (id: string, doc: RichTextDocument) => {
+        latest.current.set(id, doc);
+        emitHtml(segmentsRef.current);
       },
-      [onEmbedPress],
+      [emitHtml],
+    );
+
+    const handleTableChange = useCallback(
+      (id: string, rows: string[][], header: boolean) => {
+        latest.current.set(id, { rows, header });
+        emitHtml(segmentsRef.current);
+      },
+      [emitHtml],
+    );
+
+    const insertTable = useCallback(
+      (rows = 2, cols = 2) => {
+        const table = newTableSegment(rows, cols, true);
+        const trailing = newTextSegment();
+        latest.current.set(table.id, { rows: table.rows, header: table.header });
+        latest.current.set(trailing.id, trailing.doc);
+        // Insert the table (and a text segment to type after it) right after the active segment.
+        const prev = segmentsRef.current;
+        const idx = prev.findIndex((s) => s.id === activeTextId.current);
+        const at = idx >= 0 ? idx + 1 : prev.length;
+        const next = [...prev.slice(0, at), table, trailing, ...prev.slice(at)];
+        activeTextId.current = trailing.id;
+        applySegments(next);
+        emitHtml(next);
+      },
+      [emitHtml, applySegments],
     );
 
     useImperativeHandle(
       ref,
       (): RichTextEditorRef => ({
-        focus: () => nativeRef.current && Commands.focus(nativeRef.current),
-        blur: () => nativeRef.current && Commands.blur(nativeRef.current),
-        getHTML: () => documentToHtml(latestDoc.current, registry),
+        focus: () => active()?.focus(),
+        blur: () => active()?.blur(),
+        getHTML: () => {
+          const merged: Segment[] = segments.map((seg) => {
+            const l = latest.current.get(seg.id);
+            if (!l) return seg;
+            if (seg.type === 'text') return { ...seg, doc: l as RichTextDocument };
+            const t = l as { rows: string[][]; header: boolean };
+            return { ...seg, rows: t.rows, header: t.header };
+          });
+          return segmentsToHtml(merged, registry);
+        },
         setHTML: (html) => {
-          const doc = htmlToDocument(html, registry);
-          latestDoc.current = doc;
-          if (nativeRef.current) {
-            Commands.setDocument(nativeRef.current, JSON.stringify(doc));
+          const segs = htmlToSegments(html, registry);
+          latest.current.clear();
+          activeTextId.current = null;
+          for (const seg of segs) {
+            latest.current.set(seg.id, seg.type === 'text' ? seg.doc : { rows: seg.rows, header: seg.header });
+            if (seg.type === 'text' && activeTextId.current == null) activeTextId.current = seg.id;
           }
+          applySegments(segs);
         },
-        toggleInlineStyle: (s) =>
-          nativeRef.current && Commands.toggleInlineStyle(nativeRef.current, s),
-        toggleBold: () =>
-          nativeRef.current && Commands.toggleInlineStyle(nativeRef.current, 'bold'),
-        toggleItalic: () =>
-          nativeRef.current && Commands.toggleInlineStyle(nativeRef.current, 'italic'),
-        toggleUnderline: () =>
-          nativeRef.current && Commands.toggleInlineStyle(nativeRef.current, 'underline'),
-        toggleStrikethrough: () =>
-          nativeRef.current &&
-          Commands.toggleInlineStyle(nativeRef.current, 'strikethrough'),
-        setBlockType: (tag) =>
-          nativeRef.current && Commands.setBlockType(nativeRef.current, tag),
-        setAlignment: (align) =>
-          nativeRef.current && Commands.setAlignment(nativeRef.current, align),
-        setTextColor: (color) =>
-          nativeRef.current && Commands.setTextColor(nativeRef.current, color ?? ''),
-        setLink: (url) =>
-          nativeRef.current && Commands.setLink(nativeRef.current, url ?? ''),
-        insertLink: (text, url) =>
-          nativeRef.current && Commands.insertLink(nativeRef.current, text, url),
-        setFontSize: (size) =>
-          nativeRef.current && Commands.setFontSize(nativeRef.current, size ?? 0),
-        adjustIndent: (delta) =>
-          nativeRef.current && Commands.adjustIndent(nativeRef.current, delta),
-        toggleList: (listType) =>
-          nativeRef.current && Commands.toggleList(nativeRef.current, listType),
-        insertText: (text) =>
-          nativeRef.current && Commands.insertText(nativeRef.current, text),
-        insertImage: (src) => {
-          if (!nativeRef.current) {
-            return;
-          }
-          const embed: EmbedPlaceholder = {
-            id: `img-${Date.now()}`,
-            offset: 0,
-            tag: 'img',
-            kind: 'image',
-            src,
-            data: {},
-          };
-          Commands.insertEmbed(nativeRef.current, JSON.stringify(embed));
-        },
-        insertTable: (rows, cols, cells) => {
-          if (!nativeRef.current) {
-            return;
-          }
-          const grid = Array.from({ length: Math.max(1, rows) }, (_r, r) =>
-            Array.from({ length: Math.max(1, cols) }, (_c, c) =>
-              cells?.[r]?.[c] ?? (r === 0 ? `Column ${c + 1}` : ''),
-            ),
-          );
-          const embed: EmbedPlaceholder = {
-            id: `table-${Date.now()}`,
-            offset: 0,
-            tag: 'table',
-            kind: 'table',
-            data: { rows: JSON.stringify(grid), header: 'true' },
-          };
-          Commands.insertEmbed(nativeRef.current, JSON.stringify(embed));
-        },
-        insertEmbed: (embed) =>
-          nativeRef.current &&
-          Commands.insertEmbed(nativeRef.current, JSON.stringify(embed)),
-        undo: () => {
-          if (historyIndex.current > 0) {
-            historyIndex.current -= 1;
-            restoreSnapshot(history.current[historyIndex.current]);
-          }
-        },
-        redo: () => {
-          if (historyIndex.current < history.current.length - 1) {
-            historyIndex.current += 1;
-            restoreSnapshot(history.current[historyIndex.current]);
-          }
-        },
+        toggleInlineStyle: (s) => active()?.toggleInlineStyle(s),
+        toggleBold: () => active()?.toggleInlineStyle('bold'),
+        toggleItalic: () => active()?.toggleInlineStyle('italic'),
+        toggleUnderline: () => active()?.toggleInlineStyle('underline'),
+        toggleStrikethrough: () => active()?.toggleInlineStyle('strikethrough'),
+        setBlockType: (tag) => active()?.setBlockType(tag),
+        setAlignment: (align) => active()?.setAlignment(align),
+        setTextColor: (color) => active()?.setTextColor(color),
+        setLink: (url) => active()?.setLink(url),
+        insertLink: (text, url) => active()?.insertLink(text, url),
+        setFontSize: (size) => active()?.setFontSize(size),
+        adjustIndent: (delta) => active()?.adjustIndent(delta),
+        toggleList: (listType) => active()?.toggleList(listType),
+        insertText: (text) => active()?.insertText(text),
+        insertImage: (src) => active()?.insertImage(src),
+        insertTable,
+        insertEmbed: (embed) => active()?.insertEmbed(embed),
+        undo: () => active()?.undo(),
+        redo: () => active()?.redo(),
       }),
-      [registry, restoreSnapshot],
+      [segments, registry, insertTable, applySegments],
     );
 
     return (
-      <RichTextEditorView
-        ref={nativeRef}
-        style={[styles.editor, style]}
-        editable={editable}
-        placeholder={placeholder}
-        initialDocumentJson={initialDocumentJson}
-        onDocumentChange={handleDocumentChange}
-        onSelectionChange={handleSelectionChange}
-        onEmbedPress={handleEmbedPress}
-      />
+      <View style={[styles.container, style]}>
+        {segments.map((seg) =>
+          seg.type === 'table' ? (
+            <EditableTable
+              key={seg.id}
+              rows={seg.rows}
+              header={seg.header}
+              editable={editable}
+              onFocus={() => {
+                activeTextId.current = null;
+              }}
+              onChange={(rows, header) => handleTableChange(seg.id, rows, header)}
+            />
+          ) : (
+            <TextSegmentEditor
+              key={seg.id}
+              ref={(r) => {
+                segRefs.current.set(seg.id, r);
+              }}
+              document={seg.doc}
+              editable={editable}
+              placeholder={placeholder}
+              registry={registry}
+              onActive={() => {
+                activeTextId.current = seg.id;
+              }}
+              onChangeDoc={(doc) => handleTextChange(seg.id, doc)}
+              onSelectionActiveStyles={(activeStyles) =>
+                onSelectionChange?.({ blockId: seg.id, start: 0, end: 0, activeStyles })
+              }
+              onEmbedPress={onEmbedPress}
+            />
+          ),
+        )}
+      </View>
     );
   },
 );
 
+/** Parse HTML to the native document model (exposed for advanced/programmatic use). */
+export function htmlToRichTextDocument(html: string, registry?: TagRegistry) {
+  return htmlToDocument(html, registry);
+}
+
 const styles = StyleSheet.create({
-  editor: {
+  container: {
     minHeight: 120,
   },
 });
