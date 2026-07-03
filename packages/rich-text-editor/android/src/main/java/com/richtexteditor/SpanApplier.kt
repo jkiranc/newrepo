@@ -11,7 +11,6 @@ import android.text.style.AlignmentSpan
 import android.text.style.BackgroundColorSpan
 import android.text.style.ForegroundColorSpan
 import android.text.style.LeadingMarginSpan
-import android.text.style.RelativeSizeSpan
 import android.text.style.StrikethroughSpan
 import android.text.style.StyleSpan
 import android.text.style.SubscriptSpan
@@ -98,17 +97,20 @@ object SpanApplier {
     checked: Boolean = false,
   ) {
     if (end < start) return
-    val headingScale = when (tag) {
-      "h1" -> 1.9f
-      "h2" -> 1.6f
-      "h3" -> 1.4f
-      "h4" -> 1.2f
-      "h5" -> 1.1f
-      "h6" -> 1.0f
+    // Absolute base sizes (in sp), matching the iOS heading fonts. An absolute size lets an
+    // explicit inline font-size override the heading cleanly instead of multiplying with it
+    // (a RelativeSizeSpan multiplier compounded with an AbsoluteSizeSpan: 18px × 1.9 ≈ 34px).
+    val headingSp = when (tag) {
+      "h1" -> 30f
+      "h2" -> 26f
+      "h3" -> 22f
+      "h4" -> 20f
+      "h5" -> 18f
+      "h6" -> 16f
       else -> null
     }
-    if (headingScale != null && end > start) {
-      builder.setSpan(RelativeSizeSpan(headingScale), start, end, Spanned.SPAN_INCLUSIVE_INCLUSIVE)
+    if (headingSp != null && end > start) {
+      builder.setSpan(HeadingSizeSpan((headingSp * density).toInt()), start, end, Spanned.SPAN_INCLUSIVE_INCLUSIVE)
     }
     if ((tag == "pre" || tag == "code") && end > start) {
       builder.setSpan(TypefaceSpan("monospace"), start, end, Spanned.SPAN_INCLUSIVE_INCLUSIVE)

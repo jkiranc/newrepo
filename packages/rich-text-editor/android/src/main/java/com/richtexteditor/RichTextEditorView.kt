@@ -11,7 +11,6 @@ import android.text.style.AbsoluteSizeSpan
 import android.text.style.AlignmentSpan
 import android.text.style.ForegroundColorSpan
 import android.text.style.LeadingMarginSpan
-import android.text.style.RelativeSizeSpan
 import android.text.style.StrikethroughSpan
 import android.text.style.StyleSpan
 import android.text.style.SubscriptSpan
@@ -242,6 +241,8 @@ class RichTextEditorView(context: Context) : AppCompatEditText(context) {
     if (end > start) {
       suppressEvents = true
       for (span in editable.getSpans(start, end, AbsoluteSizeSpan::class.java)) {
+        // Leave the heading base size alone; the explicit span added below overrides it visually.
+        if (span is HeadingSizeSpan) continue
         val ss = editable.getSpanStart(span)
         val se = editable.getSpanEnd(span)
         val px = span.size
@@ -309,7 +310,7 @@ class RichTextEditorView(context: Context) : AppCompatEditText(context) {
     suppressEvents = true
     for (span in editable.getSpans(start, end, Any::class.java)) {
       when (span) {
-        is RelativeSizeSpan, is TypefaceSpan, is LeadingMarginSpan, is AlignmentSpan, is BlockTagSpan ->
+        is HeadingSizeSpan, is TypefaceSpan, is LeadingMarginSpan, is AlignmentSpan, is BlockTagSpan ->
           editable.removeSpan(span)
       }
     }
@@ -426,7 +427,9 @@ class RichTextEditorView(context: Context) : AppCompatEditText(context) {
   private fun fontSizeAt(pos: Int): Int {
     val editable = text ?: return 0
     if (pos <= 0) return 0
-    val span = editable.getSpans(pos - 1, pos, AbsoluteSizeSpan::class.java).firstOrNull() ?: return 0
+    // Ignore the heading base size so typing in a heading doesn't inherit it as an explicit size.
+    val span = editable.getSpans(pos - 1, pos, AbsoluteSizeSpan::class.java)
+      .firstOrNull { it !is HeadingSizeSpan } ?: return 0
     return (span.size / resources.displayMetrics.density).toInt()
   }
 
@@ -534,6 +537,7 @@ class RichTextEditorView(context: Context) : AppCompatEditText(context) {
         is ForegroundColorSpan -> {
           run.put("color", String.format("#%06X", 0xFFFFFF and span.foregroundColor)); styled = true
         }
+        is HeadingSizeSpan -> {} // block-level heading base size, not an inline font-size run
         is AbsoluteSizeSpan -> {
           run.put("fontSize", span.size / resources.displayMetrics.density); styled = true
         }
