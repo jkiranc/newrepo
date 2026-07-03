@@ -31,6 +31,7 @@ export interface TextSegmentRef {
   setTextColor: (color: string | null) => void;
   setLink: (url: string | null) => void;
   insertLink: (text: string, url: string) => void;
+  setLinkRange: (start: number, end: number, url: string | null) => void;
   setFontSize: (size: number | null) => void;
   adjustIndent: (delta: number) => void;
   toggleList: (listType: ListType) => void;
@@ -54,6 +55,7 @@ export interface TextSegmentEditorProps {
   onActive?: () => void;
   onSelectionActiveStyles?: (styles: InlineStyleName[]) => void;
   onEmbedPress?: (tag: string, data: Record<string, string>) => void;
+  onLinkPress?: (url: string, start: number, end: number) => void;
   style?: StyleProp<ViewStyle>;
 }
 
@@ -72,6 +74,7 @@ export const TextSegmentEditor = forwardRef<TextSegmentRef, TextSegmentEditorPro
       onActive,
       onSelectionActiveStyles,
       onEmbedPress,
+      onLinkPress,
       style,
     } = props;
 
@@ -149,6 +152,14 @@ export const TextSegmentEditor = forwardRef<TextSegmentRef, TextSegmentEditorPro
       }
     }, []);
 
+    const handleLinkPress = useCallback<NonNullable<NativeProps['onLinkPress']>>(
+      (event) => {
+        const { url, start, end } = event.nativeEvent;
+        onLinkPress?.(url, start, end);
+      },
+      [onLinkPress],
+    );
+
     const handleEmbedPress = useCallback<NonNullable<NativeProps['onEmbedPress']>>(
       (event) => {
         let data: Record<string, string> = {};
@@ -178,6 +189,8 @@ export const TextSegmentEditor = forwardRef<TextSegmentRef, TextSegmentEditorPro
         setLink: (url) => nativeRef.current && Commands.setLink(nativeRef.current, url ?? ''),
         insertLink: (text, url) =>
           nativeRef.current && Commands.insertLink(nativeRef.current, text, url),
+        setLinkRange: (start, end, url) =>
+          nativeRef.current && Commands.setLinkRange(nativeRef.current, start, end, url ?? ''),
         setFontSize: (size) =>
           nativeRef.current && Commands.setFontSize(nativeRef.current, size ?? 0),
         adjustIndent: (delta) =>
@@ -234,6 +247,7 @@ export const TextSegmentEditor = forwardRef<TextSegmentRef, TextSegmentEditorPro
         onDocumentChange={handleDocumentChange}
         onSelectionChange={handleSelectionChange}
         onEmbedPress={handleEmbedPress}
+        onLinkPress={handleLinkPress}
         onContentSizeChange={handleContentSizeChange}
       />
     );

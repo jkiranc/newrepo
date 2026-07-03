@@ -40,6 +40,7 @@ class RichTextEditorView(context: Context) : AppCompatEditText(context) {
   var onDocumentChange: ((String) -> Unit)? = null
   var onSelectionChangeListener: ((String, Int, Int, String) -> Unit)? = null
   var onEmbedPress: ((String, String) -> Unit)? = null
+  var onLinkPress: ((String, Int, Int) -> Unit)? = null
   var onContentSizeChange: ((Double) -> Unit)? = null
   private var lastReportedHeight = -1.0
 
@@ -305,6 +306,21 @@ class RichTextEditorView(context: Context) : AppCompatEditText(context) {
     setSelection(start, end)
   }
 
+  /** Set/replace/remove the link over an explicit range (used by the tap-to-edit popover). */
+  fun setLinkRange(start: Int, end: Int, url: String) {
+    val editable = text ?: return
+    val s = start.coerceIn(0, editable.length)
+    val e = end.coerceIn(0, editable.length)
+    if (e <= s) return
+    suppressEvents = true
+    for (span in editable.getSpans(s, e, URLSpan::class.java)) editable.removeSpan(span)
+    if (url.isNotEmpty()) {
+      editable.setSpan(URLSpan(url), s, e, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+    }
+    suppressEvents = false
+    emitDocumentChange()
+  }
+
   fun setFontSize(size: Int) {
     val editable = text ?: return
     var start = selectionStart
@@ -427,6 +443,11 @@ class RichTextEditorView(context: Context) : AppCompatEditText(context) {
       if (editable != null && offset in 0 until editable.length) {
         val spans = editable.getSpans(offset, offset + 1, EmbedReplacementSpan::class.java)
         spans.firstOrNull()?.let { onEmbedPress?.invoke(it.tag, it.dataJson) }
+
+        // Tapping a link reports its href + range so JS can offer Open / Edit / Remove.
+        editable.getSpans(offset, offset + 1, URLSpan::class.java).firstOrNull()?.let {
+          onLinkPress?.invoke(it.url, editable.getSpanStart(it), editable.getSpanEnd(it))
+        }
 
         // Tapping the checkbox area of a checklist item toggles it.
         val leftZone = paddingLeft + 32 * resources.displayMetrics.density

@@ -59,6 +59,9 @@ using namespace facebook::react;
     _impl.onContentHeightChange = ^(CGFloat height) {
       [weakSelf emitContentSizeChange:height];
     };
+    _impl.onLinkPressBlock = ^(NSString *url, NSInteger start, NSInteger end) {
+      [weakSelf emitLinkPress:url start:start end:end];
+    };
 
     self.contentView = _impl.textView;
   }
@@ -98,6 +101,7 @@ using namespace facebook::react;
 - (void)setTextColor:(NSString *)color { [_impl setTextColor:color]; }
 - (void)setLink:(NSString *)url { [_impl setLink:url]; }
 - (void)insertLink:(NSString *)text url:(NSString *)url { [_impl insertLink:text url:url]; }
+- (void)setLinkRange:(NSInteger)start end:(NSInteger)end url:(NSString *)url { [_impl setLinkRange:start end:end url:url]; }
 - (void)setFontSize:(NSInteger)size { [_impl setFontSize:size]; }
 - (void)adjustIndent:(NSInteger)delta { [_impl adjustIndent:delta]; }
 - (void)toggleList:(NSString *)listType { [_impl toggleList:listType]; }
@@ -139,6 +143,17 @@ using namespace facebook::react;
   if (_eventEmitter == nullptr) { return; }
   std::static_pointer_cast<const RichTextEditorViewEventEmitter>(_eventEmitter)
       ->onContentSizeChange({.height = static_cast<double>(height)});
+}
+
+- (void)emitLinkPress:(NSString *)url start:(NSInteger)start end:(NSInteger)end
+{
+  if (_eventEmitter == nullptr) { return; }
+  std::static_pointer_cast<const RichTextEditorViewEventEmitter>(_eventEmitter)
+      ->onLinkPress({
+          .url = std::string(url.UTF8String),
+          .start = static_cast<int>(start),
+          .end = static_cast<int>(end),
+      });
 }
 
 @end

@@ -6,7 +6,18 @@ import React, {
   useRef,
   useState,
 } from 'react';
-import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
+import {
+  Linking,
+  Modal,
+  Pressable,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+  type StyleProp,
+  type ViewStyle,
+} from 'react-native';
 
 import { EditableTable, type EditableTableState } from './EditableTable/EditableTable';
 import { TextSegmentEditor, type TextSegmentRef } from './TextSegmentEditor';
@@ -44,6 +55,11 @@ export interface RichTextEditorProps {
   onChangeHtml?: (html: string) => void;
   onSelectionChange?: (selection: SelectionChange) => void;
   onEmbedPress?: (tag: string, data: Record<string, string>) => void;
+  /**
+   * Called when a link is tapped. Return `true` to handle it yourself and suppress the built-in
+   * Open / Edit / Remove popover.
+   */
+  onLinkPress?: (url: string, start: number, end: number) => boolean | void;
   style?: StyleProp<ViewStyle>;
 }
 
@@ -88,6 +104,7 @@ export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>
       onChangeHtml,
       onSelectionChange,
       onEmbedPress,
+      onLinkPress,
       style,
     } = props;
 
@@ -101,6 +118,11 @@ export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>
     const [segments, setSegments] = useState<Segment[]>(initialSegments);
     // Which table segment currently has a focused cell (so only that table shows its controls).
     const [activeTableId, setActiveTableId] = useState<string | null>(null);
+    // A tapped link awaiting an Open / Edit / Remove choice (null = popover closed).
+    const [linkAction, setLinkAction] = useState<
+      { segId: string; url: string; start: number; end: number } | null
+    >(null);
+    const [linkEditing, setLinkEditing] = useState(false);
 
     // Per-segment refs and latest content (kept out of state so keystrokes don't re-render).
     const segRefs = useRef(new Map<string, TextSegmentRef | null>());
@@ -307,13 +329,116 @@ export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>
                 onSelectionChange?.({ blockId: seg.id, start: 0, end: 0, activeStyles })
               }
               onEmbedPress={onEmbedPress}
+              onLinkPress={(url, start, end) => {
+                if (onLinkPress?.(url, start, end) === true) return;
+                setLinkEditing(false);
+                setLinkAction({ segId: seg.id, url, start, end });
+              }}
             />
           ),
         )}
+
+        <LinkActionPopover
+          action={linkAction}
+          editing={linkEditing}
+          onOpen={(url) => {
+            Linking.openURL(url).catch(() => {});
+            setLinkAction(null);
+          }}
+          onStartEdit={() => setLinkEditing(true)}
+          onSubmitEdit={(url) => {
+            if (linkAction) {
+              segRefs.current
+                .get(linkAction.segId)
+                ?.setLinkRange(linkAction.start, linkAction.end, url.trim() || null);
+            }
+            setLinkAction(null);
+          }}
+          onRemove={() => {
+            if (linkAction) {
+              segRefs.current
+                .get(linkAction.segId)
+                ?.setLinkRange(linkAction.start, linkAction.end, null);
+            }
+            setLinkAction(null);
+          }}
+          onClose={() => setLinkAction(null)}
+        />
       </View>
     );
   },
 );
+
+/** A popover shown when a link is tapped: Open in browser, Edit the URL, or Remove the link. */
+function LinkActionPopover({
+  action,
+  editing,
+  onOpen,
+  onStartEdit,
+  onSubmitEdit,
+  onRemove,
+  onClose,
+}: {
+  action: { url: string; start: number; end: number } | null;
+  editing: boolean;
+  onOpen: (url: string) => void;
+  onStartEdit: () => void;
+  onSubmitEdit: (url: string) => void;
+  onRemove: () => void;
+  onClose: () => void;
+}) {
+  const [value, setValue] = useState('');
+  return (
+    <Modal
+      visible={action != null}
+      transparent
+      animationType="fade"
+      onShow={() => setValue(action?.url ?? '')}
+      onRequestClose={onClose}
+    >
+      <Pressable style={linkStyles.backdrop} onPress={onClose}>
+        <Pressable style={linkStyles.card} onPress={() => {}}>
+          {editing ? (
+            <>
+              <Text style={linkStyles.title}>Edit link</Text>
+              <TextInput
+                autoFocus
+                value={value}
+                onChangeText={setValue}
+                placeholder="https://example.com"
+                autoCapitalize="none"
+                autoCorrect={false}
+                keyboardType="url"
+                style={linkStyles.input}
+              />
+              <View style={linkStyles.row}>
+                <TouchableOpacity accessibilityRole="button" onPress={onClose}>
+                  <Text style={linkStyles.cancel}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity accessibilityRole="button" onPress={() => onSubmitEdit(value)}>
+                  <Text style={linkStyles.ok}>Save</Text>
+                </TouchableOpacity>
+              </View>
+            </>
+          ) : (
+            <>
+              <Text style={linkStyles.url} numberOfLines={1}>{action?.url}</Text>
+              <TouchableOpacity accessibilityRole="button" accessibilityLabel="link-open" style={linkStyles.item} onPress={() => onOpen(action?.url ?? '')}>
+                <Text style={linkStyles.itemText}>🔗 Open</Text>
+              </TouchableOpacity>
+              <TouchableOpacity accessibilityRole="button" accessibilityLabel="link-edit" style={linkStyles.item} onPress={onStartEdit}>
+                <Text style={linkStyles.itemText}>✏️ Edit</Text>
+              </TouchableOpacity>
+              <TouchableOpacity accessibilityRole="button" accessibilityLabel="link-remove" style={linkStyles.item} onPress={onRemove}>
+                <Text style={[linkStyles.itemText, linkStyles.danger]}>🗑 Remove</Text>
+              </TouchableOpacity>
+            </>
+          )}
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
 
 /** Parse HTML to the native document model (exposed for advanced/programmatic use). */
 export function htmlToRichTextDocument(html: string, registry?: TagRegistry) {
@@ -324,4 +449,37 @@ const styles = StyleSheet.create({
   container: {
     minHeight: 120,
   },
+});
+
+const linkStyles = StyleSheet.create({
+  backdrop: { flex: 1, backgroundColor: '#00000033', justifyContent: 'center', padding: 32 },
+  card: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    paddingVertical: 8,
+    elevation: 6,
+    shadowColor: '#000',
+    shadowOpacity: 0.2,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 3 },
+  },
+  url: { fontSize: 13, color: '#5F6368', paddingHorizontal: 16, paddingVertical: 8 },
+  item: { paddingHorizontal: 16, paddingVertical: 12 },
+  itemText: { fontSize: 16, color: '#222' },
+  danger: { color: '#D93025' },
+  title: { fontSize: 15, fontWeight: '600', color: '#333', paddingHorizontal: 16, paddingTop: 12 },
+  input: {
+    margin: 16,
+    marginTop: 8,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: '#aaa',
+    borderRadius: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    fontSize: 15,
+    color: '#111',
+  },
+  row: { flexDirection: 'row', justifyContent: 'flex-end', gap: 20, paddingHorizontal: 16, paddingBottom: 12 },
+  cancel: { color: '#5F6368', fontSize: 15 },
+  ok: { color: '#1A73E8', fontSize: 15, fontWeight: '600' },
 });

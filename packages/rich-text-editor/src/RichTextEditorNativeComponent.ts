@@ -31,6 +31,8 @@ export interface NativeProps extends ViewProps {
   onEmbedPress?: DirectEventHandler<Readonly<{ tag: string; dataJson: string }>>;
   /** Fires with the intrinsic content height (dp) so JS can size the view to fit its text. */
   onContentSizeChange?: DirectEventHandler<Readonly<{ height: Double }>>;
+  /** Fires when a link is tapped; carries its href and the range it covers. */
+  onLinkPress?: DirectEventHandler<Readonly<{ url: string; start: Int32; end: Int32 }>>;
 }
 
 // Fabric codegen requires each command's first argument to be written literally as
@@ -74,6 +76,13 @@ interface NativeCommands {
     text: string,
     url: string,
   ) => void;
+  /** Set/replace/remove the link over an explicit range (empty url removes it). */
+  setLinkRange: (
+    viewRef: React.ElementRef<HostComponent<NativeProps>>,
+    start: Int32,
+    end: Int32,
+    url: string,
+  ) => void;
   /** Set the selection's font size in points (0 clears it back to the block default). */
   setFontSize: (
     viewRef: React.ElementRef<HostComponent<NativeProps>>,
@@ -112,6 +121,7 @@ export const Commands: NativeCommands = codegenNativeCommands<NativeCommands>({
     'setTextColor',
     'setLink',
     'insertLink',
+    'setLinkRange',
     'setFontSize',
     'adjustIndent',
     'toggleList',

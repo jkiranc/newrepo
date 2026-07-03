@@ -45,3 +45,17 @@ class ContentSizeChangeEvent(viewId: Int, private val height: Double) :
     putDouble("height", height)
   }
 }
+
+class LinkPressEvent(
+  viewId: Int,
+  private val url: String,
+  private val start: Int,
+  private val end: Int,
+) : Event<LinkPressEvent>(viewId) {
+  override fun getEventName() = "onLinkPress"
+  override fun getEventData(): WritableMap = Arguments.createMap().apply {
+    putString("url", url)
+    putInt("start", start)
+    putInt("end", end)
+  }
+}

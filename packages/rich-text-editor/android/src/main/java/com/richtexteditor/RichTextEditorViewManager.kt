@@ -47,6 +47,9 @@ class RichTextEditorViewManager :
     view.onContentSizeChange = { height ->
       dispatcher?.dispatchEvent(ContentSizeChangeEvent(view.id, height))
     }
+    view.onLinkPress = { url, start, end ->
+      dispatcher?.dispatchEvent(LinkPressEvent(view.id, url, start, end))
+    }
     return view
   }
 
@@ -103,6 +106,10 @@ class RichTextEditorViewManager :
 
   override fun insertLink(view: RichTextEditorView, text: String?, url: String?) {
     view.insertLink(text ?: "", url ?: "")
+  }
+
+  override fun setLinkRange(view: RichTextEditorView, start: Int, end: Int, url: String?) {
+    view.setLinkRange(start, end, url ?: "")
   }
 
   override fun setFontSize(view: RichTextEditorView, size: Int) {

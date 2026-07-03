@@ -17,6 +17,7 @@ public final class RichTextEditorViewImpl: NSObject, UITextViewDelegate {
     @objc public var onDocumentChangeJSON: ((String) -> Void)?
     @objc public var onSelectionChangeBlock: ((String, Int, Int, String) -> Void)?
     @objc public var onEmbedPressBlock: ((String, String) -> Void)?
+    @objc public var onLinkPressBlock: ((String, Int, Int) -> Void)?
     @objc public var onContentHeightChange: ((CGFloat) -> Void)?
     private var lastReportedHeight: CGFloat = -1
 
@@ -520,6 +521,28 @@ public final class RichTextEditorViewImpl: NSObject, UITextViewDelegate {
         if let attachment = text.attribute(.attachment, at: index, effectiveRange: nil) as? EmbedTextAttachment {
             onEmbedPressBlock?(attachment.embed.tag, attachment.dataJSON)
         }
+        var linkRange = NSRange(location: 0, length: 0)
+        if let link = text.attribute(.link, at: index, effectiveRange: &linkRange) {
+            let url = (link as? URL)?.absoluteString ?? (link as? String) ?? ""
+            onLinkPressBlock?(url, linkRange.location, linkRange.location + linkRange.length)
+        }
+    }
+
+    @objc public func setLinkRange(_ start: Int, end: Int, url: String) {
+        guard let current = textView.attributedText else { return }
+        let length = current.length
+        let s = max(0, min(start, length))
+        let e = max(0, min(end, length))
+        guard e > s else { return }
+        let range = NSRange(location: s, length: e - s)
+        let mutable = NSMutableAttributedString(attributedString: current)
+        if url.isEmpty {
+            mutable.removeAttribute(.link, range: range)
+        } else if let parsed = URL(string: url) {
+            mutable.addAttribute(.link, value: parsed, range: range)
+        }
+        textView.attributedText = mutable
+        emitDocumentChange()
     }
 
     private func wireImageCallbacks() {
