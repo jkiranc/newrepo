@@ -99,6 +99,8 @@ export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>
     );
 
     const [segments, setSegments] = useState<Segment[]>(initialSegments);
+    // Which table segment currently has a focused cell (so only that table shows its controls).
+    const [activeTableId, setActiveTableId] = useState<string | null>(null);
 
     // Per-segment refs and latest content (kept out of state so keystrokes don't re-render).
     const segRefs = useRef(new Map<string, TextSegmentRef | null>());
@@ -278,8 +280,10 @@ export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>
               header={seg.header}
               headerColumn={seg.headerColumn}
               editable={editable}
+              active={activeTableId === seg.id}
               onFocus={() => {
                 activeTextId.current = null;
+                setActiveTableId(seg.id);
               }}
               onChange={(state) => handleTableChange(seg.id, state)}
               onDelete={() => removeSegment(seg.id)}
@@ -296,6 +300,7 @@ export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>
               registry={registry}
               onActive={() => {
                 activeTextId.current = seg.id;
+                setActiveTableId(null);
               }}
               onChangeDoc={(doc) => handleTextChange(seg.id, doc)}
               onSelectionActiveStyles={(activeStyles) =>

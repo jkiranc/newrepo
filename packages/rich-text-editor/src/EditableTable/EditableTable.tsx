@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   ScrollView,
   StyleSheet,
@@ -24,6 +24,8 @@ export interface EditableTableProps {
   header?: boolean;
   headerColumn?: boolean;
   editable?: boolean;
+  /** Whether this table is the focused segment — controls only show when it is. */
+  active?: boolean;
   /** Fires on any structural or cell edit with the full current table state. */
   onChange?: (state: EditableTableState) => void;
   /** Fires when any cell gains focus (so a container can mark this segment active). */
@@ -58,6 +60,7 @@ export function EditableTable({
   header = true,
   headerColumn = false,
   editable = true,
+  active = false,
   onChange,
   onFocus,
   onDelete,
@@ -70,6 +73,11 @@ export function EditableTable({
   const [menu, setMenu] = useState<MenuKind>(null);
   // The most recently focused cell — insert/delete act relative to it.
   const focused = useRef<{ r: number; c: number }>({ r: 0, c: 0 });
+
+  // Hide any open menu when the table loses focus.
+  useEffect(() => {
+    if (!active) setMenu(null);
+  }, [active]);
 
   const rowCount = grid.length;
   const colCount = grid[0]?.length ?? 0;
@@ -141,7 +149,7 @@ export function EditableTable({
       style={[styles.wrap, style]}
       onLayout={(e) => setContainerWidth(e.nativeEvent.layout.width)}
     >
-      {editable && (
+      {editable && active && (
         <View style={styles.bar}>
           <Tab label="⬍ Column" open={menu === 'col'} onPress={() => setMenu(menu === 'col' ? null : 'col')} />
           <Tab label="⬌ Row" open={menu === 'row'} onPress={() => setMenu(menu === 'row' ? null : 'row')} />
@@ -158,7 +166,7 @@ export function EditableTable({
         </View>
       )}
 
-      {menu === 'col' && (
+      {active && menu === 'col' && (
         <Menu>
           <Item
             label="Header column"
@@ -172,7 +180,7 @@ export function EditableTable({
         </Menu>
       )}
 
-      {menu === 'row' && (
+      {active && menu === 'row' && (
         <Menu>
           <Item
             label="Header row"
