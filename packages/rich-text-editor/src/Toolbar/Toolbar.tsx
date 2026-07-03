@@ -25,8 +25,15 @@ export interface ToolbarProps {
   activeAlignment?: Alignment;
   /** Optional swatches for the color picker. Defaults to a small standard palette. */
   colors?: string[];
+  /** Default unit for the font-size dropdown ('px' | 'pt'). Users can switch it live. */
+  fontSizeUnit?: FontSizeUnit;
   style?: StyleProp<ViewStyle>;
 }
+
+type FontSizeUnit = 'px' | 'pt';
+
+/** CSS reference: 1pt = 1/72in, 1px = 1/96in, so pt→px is ×96/72. */
+const PT_TO_PX = 96 / 72;
 
 const INLINE_BUTTONS: { label: string; style: InlineStyleName }[] = [
   { label: 'B', style: 'bold' },
@@ -77,6 +84,7 @@ export function Toolbar({
   activeBlockType = 'p',
   activeAlignment = 'left',
   colors = DEFAULT_COLORS,
+  fontSizeUnit = 'px',
   style,
 }: ToolbarProps) {
   const [fontOpen, setFontOpen] = useState(false);
@@ -85,6 +93,8 @@ export function Toolbar({
   const [linkOpen, setLinkOpen] = useState(false);
   const [tableOpen, setTableOpen] = useState(false);
   const [sizeOpen, setSizeOpen] = useState(false);
+  const [sizeUnit, setSizeUnit] = useState<FontSizeUnit>(fontSizeUnit);
+  useEffect(() => setSizeUnit(fontSizeUnit), [fontSizeUnit]);
 
   // Optimistic local state so the font label / alignment highlight update the moment the user
   // picks an option. Falls back to the (optional) props, which a consumer can drive from
@@ -118,7 +128,7 @@ export function Toolbar({
           style={styles.dropdown}
           onPress={() => setSizeOpen(true)}
         >
-          <Text style={styles.dropdownLabel} numberOfLines={1}>Size</Text>
+          <Text style={styles.dropdownLabel} numberOfLines={1}>{`Size (${sizeUnit})`}</Text>
           <Text style={styles.caret}>▾</Text>
         </TouchableOpacity>
 
@@ -209,20 +219,36 @@ export function Toolbar({
         ))}
       </Popover>
 
-      {/* Font size menu */}
+      {/* Font size menu, with a px/pt unit toggle. The document model is always stored in px,
+          so a pt selection is converted before being applied. */}
       <Popover visible={sizeOpen} onClose={() => setSizeOpen(false)}>
+        <View style={styles.unitRow}>
+          {(['px', 'pt'] as FontSizeUnit[]).map((u) => (
+            <TouchableOpacity
+              key={u}
+              accessibilityRole="button"
+              accessibilityLabel={`size-unit-${u}`}
+              accessibilityState={{ selected: sizeUnit === u }}
+              style={[styles.unitChip, sizeUnit === u && styles.unitChipOn]}
+              onPress={() => setSizeUnit(u)}
+            >
+              <Text style={[styles.unitChipText, sizeUnit === u && styles.unitChipTextOn]}>{u}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
         {FONT_SIZES.map((s) => (
           <TouchableOpacity
             key={s}
             accessibilityRole="menuitem"
-            accessibilityLabel={`size-${s}`}
+            accessibilityLabel={`size-${s}-${sizeUnit}`}
             style={styles.menuItem}
             onPress={() => {
-              editorRef.current?.setFontSize(s);
+              const px = sizeUnit === 'pt' ? Math.round(s * PT_TO_PX) : s;
+              editorRef.current?.setFontSize(px);
               setSizeOpen(false);
             }}
           >
-            <Text style={styles.menuLabel}>{s}</Text>
+            <Text style={styles.menuLabel}>{`${s} ${sizeUnit}`}</Text>
           </TouchableOpacity>
         ))}
       </Popover>
@@ -511,6 +537,25 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 2 },
   },
+  unitRow: {
+    flexDirection: 'row',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#eee',
+  },
+  unitChip: {
+    flex: 1,
+    paddingVertical: 6,
+    borderRadius: 6,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: '#ccc',
+    alignItems: 'center',
+  },
+  unitChipOn: { backgroundColor: '#DCEEFF', borderColor: '#1A73E8' },
+  unitChipText: { fontSize: 13, color: '#333' },
+  unitChipTextOn: { color: '#1A73E8', fontWeight: '600' },
   menuItem: { paddingHorizontal: 14, paddingVertical: 10, borderRadius: 6 },
   menuItemActive: { backgroundColor: '#DCEEFF' },
   menuLabel: { fontSize: 15, color: '#333' },
