@@ -4,6 +4,7 @@ import React, {
   useImperativeHandle,
   useMemo,
   useRef,
+  useState,
 } from 'react';
 import { StyleSheet, type StyleProp, type ViewStyle } from 'react-native';
 
@@ -75,6 +76,8 @@ export const TextSegmentEditor = forwardRef<TextSegmentRef, TextSegmentEditorPro
     } = props;
 
     const nativeRef = useRef<React.ComponentRef<typeof RichTextEditorView>>(null);
+    // Height reported by native so the segment sizes to its content (no clipping/inner scroll).
+    const [height, setHeight] = useState<number | undefined>(undefined);
     const latestDoc = useRef<RichTextDocument>(document);
     const history = useRef<string[]>([]);
     const historyIndex = useRef(-1);
@@ -136,6 +139,15 @@ export const TextSegmentEditor = forwardRef<TextSegmentRef, TextSegmentEditorPro
       },
       [onActive, onSelectionActiveStyles],
     );
+
+    const handleContentSizeChange = useCallback<
+      NonNullable<NativeProps['onContentSizeChange']>
+    >((event) => {
+      const h = event.nativeEvent.height;
+      if (Number.isFinite(h) && h > 0) {
+        setHeight(Math.max(40, Math.ceil(h)));
+      }
+    }, []);
 
     const handleEmbedPress = useCallback<NonNullable<NativeProps['onEmbedPress']>>(
       (event) => {
@@ -215,13 +227,14 @@ export const TextSegmentEditor = forwardRef<TextSegmentRef, TextSegmentEditorPro
     return (
       <RichTextEditorView
         ref={nativeRef}
-        style={[styles.editor, style]}
+        style={[styles.editor, height != null ? { height } : null, style]}
         editable={editable}
         placeholder={placeholder}
         initialDocumentJson={initialDocumentJson}
         onDocumentChange={handleDocumentChange}
         onSelectionChange={handleSelectionChange}
         onEmbedPress={handleEmbedPress}
+        onContentSizeChange={handleContentSizeChange}
       />
     );
   },

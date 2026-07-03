@@ -40,6 +40,8 @@ class RichTextEditorView(context: Context) : AppCompatEditText(context) {
   var onDocumentChange: ((String) -> Unit)? = null
   var onSelectionChangeListener: ((String, Int, Int, String) -> Unit)? = null
   var onEmbedPress: ((String, String) -> Unit)? = null
+  var onContentSizeChange: ((Double) -> Unit)? = null
+  private var lastReportedHeight = -1.0
 
   private var currentBlockTag = "p"
   private var currentBlockId = "b0"
@@ -82,9 +84,31 @@ class RichTextEditorView(context: Context) : AppCompatEditText(context) {
         if (!initialized || suppressEvents) return
         applyPendingStyles()
         emitDocumentChange()
+        // Content may have grown/shrunk; report the new height once layout settles.
+        post { reportContentHeight() }
       }
     })
     initialized = true
+  }
+
+  /**
+   * Report the intrinsic content height (dp) so the JS wrapper can size this segment to fit its
+   * text. `layout.height` is the full text height regardless of the view's allocated height, so
+   * this stays correct even while JS controls the view height (no clipping, no internal scroll).
+   */
+  private fun reportContentHeight() {
+    val lay = layout ?: return
+    val px = lay.height + paddingTop + paddingBottom
+    val dp = px / resources.displayMetrics.density.toDouble()
+    if (kotlin.math.abs(dp - lastReportedHeight) > 0.5) {
+      lastReportedHeight = dp
+      onContentSizeChange?.invoke(dp)
+    }
+  }
+
+  override fun onLayout(changed: Boolean, left: Int, top: Int, right: Int, bottom: Int) {
+    super.onLayout(changed, left, top, right, bottom)
+    if (initialized) reportContentHeight()
   }
 
   fun applyInitialDocument(json: String) {
@@ -103,6 +127,7 @@ class RichTextEditorView(context: Context) : AppCompatEditText(context) {
     val density = resources.displayMetrics.density
     setText(SpanApplier.spannableForDocument(json, density))
     suppressEvents = false
+    post { reportContentHeight() }
   }
 
   fun toggleInlineStyle(styleName: String) {

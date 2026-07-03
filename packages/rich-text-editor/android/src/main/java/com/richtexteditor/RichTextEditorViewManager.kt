@@ -44,6 +44,9 @@ class RichTextEditorViewManager :
     view.onEmbedPress = { tag, dataJson ->
       dispatcher?.dispatchEvent(EmbedPressEvent(view.id, tag, dataJson))
     }
+    view.onContentSizeChange = { height ->
+      dispatcher?.dispatchEvent(ContentSizeChangeEvent(view.id, height))
+    }
     return view
   }
 

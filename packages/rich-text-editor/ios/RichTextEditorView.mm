@@ -56,10 +56,19 @@ using namespace facebook::react;
     _impl.onEmbedPressBlock = ^(NSString *tag, NSString *dataJson) {
       [weakSelf emitEmbedPress:tag dataJson:dataJson];
     };
+    _impl.onContentHeightChange = ^(CGFloat height) {
+      [weakSelf emitContentSizeChange:height];
+    };
 
     self.contentView = _impl.textView;
   }
   return self;
+}
+
+- (void)layoutSubviews
+{
+  [super layoutSubviews];
+  [_impl reportContentHeight];
 }
 
 - (void)updateProps:(const Props::Shared &)props oldProps:(const Props::Shared &)oldProps
@@ -123,6 +132,13 @@ using namespace facebook::react;
           .tag = std::string(tag.UTF8String),
           .dataJson = std::string(dataJson.UTF8String),
       });
+}
+
+- (void)emitContentSizeChange:(CGFloat)height
+{
+  if (_eventEmitter == nullptr) { return; }
+  std::static_pointer_cast<const RichTextEditorViewEventEmitter>(_eventEmitter)
+      ->onContentSizeChange({.height = static_cast<double>(height)});
 }
 
 @end

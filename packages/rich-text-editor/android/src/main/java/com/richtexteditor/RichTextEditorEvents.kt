@@ -37,3 +37,11 @@ class EmbedPressEvent(viewId: Int, private val tag: String, private val dataJson
     putString("dataJson", dataJson)
   }
 }
+
+class ContentSizeChangeEvent(viewId: Int, private val height: Double) :
+  Event<ContentSizeChangeEvent>(viewId) {
+  override fun getEventName() = "onContentSizeChange"
+  override fun getEventData(): WritableMap = Arguments.createMap().apply {
+    putDouble("height", height)
+  }
+}

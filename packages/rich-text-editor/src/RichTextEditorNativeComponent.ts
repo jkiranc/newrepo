@@ -4,6 +4,7 @@ import codegenNativeComponent from 'react-native/Libraries/Utilities/codegenNati
 import codegenNativeCommands from 'react-native/Libraries/Utilities/codegenNativeCommands';
 import type {
   DirectEventHandler,
+  Double,
   Int32,
 } from 'react-native/Libraries/Types/CodegenTypes';
 
@@ -28,6 +29,8 @@ export interface NativeProps extends ViewProps {
   >;
   /** Fires when an embed (image/chip) is tapped; `dataJson` is the embed's serialized data. */
   onEmbedPress?: DirectEventHandler<Readonly<{ tag: string; dataJson: string }>>;
+  /** Fires with the intrinsic content height (dp) so JS can size the view to fit its text. */
+  onContentSizeChange?: DirectEventHandler<Readonly<{ height: Double }>>;
 }
 
 // Fabric codegen requires each command's first argument to be written literally as

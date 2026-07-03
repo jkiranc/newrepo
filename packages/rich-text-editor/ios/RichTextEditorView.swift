@@ -17,6 +17,8 @@ public final class RichTextEditorViewImpl: NSObject, UITextViewDelegate {
     @objc public var onDocumentChangeJSON: ((String) -> Void)?
     @objc public var onSelectionChangeBlock: ((String, Int, Int, String) -> Void)?
     @objc public var onEmbedPressBlock: ((String, String) -> Void)?
+    @objc public var onContentHeightChange: ((CGFloat) -> Void)?
+    private var lastReportedHeight: CGFloat = -1
 
     private var document = RichTextDocument(blocks: [])
     private var didSeedInitialDocument = false
@@ -63,6 +65,20 @@ public final class RichTextEditorViewImpl: NSObject, UITextViewDelegate {
         document = decoded
         textView.attributedText = SpanApplier.attributedString(for: decoded)
         wireImageCallbacks()
+        DispatchQueue.main.async { [weak self] in self?.reportContentHeight() }
+    }
+
+    /// Report the intrinsic content height so the JS wrapper can size this segment to fit its
+    /// text (each text segment stacks in the container, so a fixed height would clip content).
+    @objc public func reportContentHeight() {
+        let width = textView.bounds.width
+        guard width > 0 else { return }
+        let fitted = textView.sizeThatFits(CGSize(width: width, height: .greatestFiniteMagnitude))
+        let h = ceil(fitted.height)
+        if abs(h - lastReportedHeight) > 0.5 {
+            lastReportedHeight = h
+            onContentHeightChange?(h)
+        }
     }
 
     @objc public func focus() { textView.becomeFirstResponder() }
@@ -311,6 +327,7 @@ public final class RichTextEditorViewImpl: NSObject, UITextViewDelegate {
 
     public func textViewDidChange(_ textView: UITextView) {
         scheduleDocumentChange()
+        reportContentHeight()
     }
 
     public func textViewDidChangeSelection(_ textView: UITextView) {
