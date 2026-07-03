@@ -98,6 +98,14 @@ class RichTextEditorViewManager :
     view.setLink(url ?: "")
   }
 
+  override fun insertLink(view: RichTextEditorView, text: String?, url: String?) {
+    view.insertLink(text ?: "", url ?: "")
+  }
+
+  override fun setFontSize(view: RichTextEditorView, size: Int) {
+    view.setFontSize(size)
+  }
+
   override fun adjustIndent(view: RichTextEditorView, delta: Int) {
     view.adjustIndent(delta)
   }

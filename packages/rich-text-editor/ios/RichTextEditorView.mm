@@ -88,6 +88,8 @@ using namespace facebook::react;
 - (void)setAlignment:(NSString *)align { [_impl setAlignment:align]; }
 - (void)setTextColor:(NSString *)color { [_impl setTextColor:color]; }
 - (void)setLink:(NSString *)url { [_impl setLink:url]; }
+- (void)insertLink:(NSString *)text url:(NSString *)url { [_impl insertLink:text url:url]; }
+- (void)setFontSize:(NSInteger)size { [_impl setFontSize:size]; }
 - (void)adjustIndent:(NSInteger)delta { [_impl adjustIndent:delta]; }
 - (void)toggleList:(NSString *)listType { [_impl toggleList:listType]; }
 - (void)insertText:(NSString *)text { [_impl insertText:text]; }

@@ -211,6 +211,54 @@ public final class RichTextEditorViewImpl: NSObject, UITextViewDelegate {
         emitDocumentChange()
     }
 
+    @objc public func setFontSize(_ size: Int) {
+        var selected = textView.selectedRange
+        let length = textView.attributedText?.length ?? 0
+        if selected.length == 0, lastSelection.length > 0, NSMaxRange(lastSelection) <= length {
+            selected = lastSelection
+        }
+        if selected.length > 0 {
+            let mutable = NSMutableAttributedString(attributedString: textView.attributedText ?? NSAttributedString())
+            let tag = mutable.attribute(.rteBlockTag, at: selected.location, effectiveRange: nil) as? String ?? "p"
+            let baseSize = SpanApplier.font(forTag: tag).pointSize
+            mutable.enumerateAttribute(.font, in: selected) { value, sub, _ in
+                let current = (value as? UIFont) ?? UIFont.systemFont(ofSize: baseSize)
+                let target = size > 0 ? CGFloat(size) : baseSize
+                mutable.addAttribute(.font, value: current.withSize(target), range: sub)
+            }
+            textView.attributedText = mutable
+            textView.selectedRange = selected
+            emitDocumentChange()
+        } else {
+            var attrs = textView.typingAttributes
+            let current = (attrs[.font] as? UIFont) ?? UIFont.systemFont(ofSize: SpanApplier.defaultFontSize)
+            let target = size > 0 ? CGFloat(size) : SpanApplier.defaultFontSize
+            attrs[.font] = current.withSize(target)
+            textView.typingAttributes = attrs
+        }
+        notifySelectionChange()
+    }
+
+    @objc public func insertLink(_ text: String, url: String) {
+        guard !text.isEmpty else { return }
+        var attrs = textView.typingAttributes
+        if attrs[.font] == nil {
+            attrs[.font] = UIFont.systemFont(ofSize: SpanApplier.defaultFontSize)
+        }
+        if url.isEmpty {
+            attrs.removeValue(forKey: .link)
+        } else if let parsed = URL(string: url) {
+            attrs[.link] = parsed
+        }
+        let piece = NSAttributedString(string: text, attributes: attrs)
+        let mutable = NSMutableAttributedString(attributedString: textView.attributedText ?? NSAttributedString())
+        let loc = min(textView.selectedRange.location, mutable.length)
+        mutable.insert(piece, at: loc)
+        textView.attributedText = mutable
+        textView.selectedRange = NSRange(location: loc + (text as NSString).length, length: 0)
+        emitDocumentChange()
+    }
+
     @objc public func adjustIndent(_ delta: Int) {
         guard let current = textView.attributedText else { return }
         let range = (current.string as NSString).paragraphRange(for: textView.selectedRange)
@@ -341,6 +389,7 @@ public final class RichTextEditorViewImpl: NSObject, UITextViewDelegate {
             align = attributed.attribute(.rteAlign, at: range.location, effectiveRange: nil) as? String
             checked = attributed.attribute(.rteChecked, at: range.location, effectiveRange: nil) as? Bool
 
+            let baseFontSize = SpanApplier.font(forTag: blockTag).pointSize
             attributed.enumerateAttributes(in: range) { attrs, r, _ in
                 let rel = NSRange(location: r.location - range.location, length: r.length)
                 if let attachment = attrs[.attachment] as? EmbedTextAttachment {
@@ -349,7 +398,7 @@ public final class RichTextEditorViewImpl: NSObject, UITextViewDelegate {
                     embeds.append(embed)
                     return
                 }
-                guard let run = styleRun(from: attrs, range: rel) else { return }
+                guard let run = styleRun(from: attrs, range: rel, baseFontSize: baseFontSize) else { return }
                 if var last = runs.last, last.start + last.length == run.start, sameStyle(last, run) {
                     last.length += run.length
                     runs[runs.count - 1] = last
@@ -367,13 +416,16 @@ public final class RichTextEditorViewImpl: NSObject, UITextViewDelegate {
         )
     }
 
-    private func styleRun(from attrs: [NSAttributedString.Key: Any], range: NSRange) -> StyleRun? {
+    private func styleRun(from attrs: [NSAttributedString.Key: Any], range: NSRange, baseFontSize: CGFloat) -> StyleRun? {
         var run = StyleRun(start: range.location, length: range.length, tag: "span")
         var styled = false
         if let font = attrs[.font] as? UIFont {
             let traits = font.fontDescriptor.symbolicTraits
             if traits.contains(.traitBold) { run.bold = true; styled = true }
             if traits.contains(.traitItalic) { run.italic = true; styled = true }
+            // Emit an explicit size only when it differs from the block's base font (so plain
+            // heading text isn't tagged with a redundant size).
+            if abs(font.pointSize - baseFontSize) > 0.5 { run.fontSize = Double(font.pointSize); styled = true }
         }
         if attrs[.underlineStyle] != nil { run.underline = true; styled = true }
         if attrs[.strikethroughStyle] != nil { run.strikethrough = true; styled = true }
@@ -396,6 +448,7 @@ public final class RichTextEditorViewImpl: NSObject, UITextViewDelegate {
             && a.strikethrough == b.strikethrough && a.superscript == b.superscript
             && a.`subscript` == b.`subscript` && a.color == b.color
             && a.backgroundColor == b.backgroundColor && a.link == b.link
+            && a.fontSize == b.fontSize
     }
 
     // MARK: - Selection

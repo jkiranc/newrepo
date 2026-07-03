@@ -61,6 +61,10 @@ export interface RichTextEditorRef {
   setTextColor: (color: string | null) => void;
   /** Set the selection's link href; pass null/'' to remove the link. */
   setLink: (url: string | null) => void;
+  /** Insert `text` linked to `url` at the caret (for links with custom display text). */
+  insertLink: (text: string, url: string) => void;
+  /** Set the selection's font size in points; pass null/0 to clear back to the default. */
+  setFontSize: (size: number | null) => void;
   /** Adjust the current paragraph's indent by `delta` (e.g. +1 / -1). */
   adjustIndent: (delta: number) => void;
   /** Toggle the current paragraph's list type ('bullet' | 'ordered' | 'check' | 'none'). */
@@ -210,6 +214,10 @@ export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>
           nativeRef.current && Commands.setTextColor(nativeRef.current, color ?? ''),
         setLink: (url) =>
           nativeRef.current && Commands.setLink(nativeRef.current, url ?? ''),
+        insertLink: (text, url) =>
+          nativeRef.current && Commands.insertLink(nativeRef.current, text, url),
+        setFontSize: (size) =>
+          nativeRef.current && Commands.setFontSize(nativeRef.current, size ?? 0),
         adjustIndent: (delta) =>
           nativeRef.current && Commands.adjustIndent(nativeRef.current, delta),
         toggleList: (listType) =>

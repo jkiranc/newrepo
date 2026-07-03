@@ -65,6 +65,17 @@ interface NativeCommands {
     viewRef: React.ElementRef<HostComponent<NativeProps>>,
     url: string,
   ) => void;
+  /** Insert `text` linked to `url` at the caret (used when the user supplies link text). */
+  insertLink: (
+    viewRef: React.ElementRef<HostComponent<NativeProps>>,
+    text: string,
+    url: string,
+  ) => void;
+  /** Set the selection's font size in points (0 clears it back to the block default). */
+  setFontSize: (
+    viewRef: React.ElementRef<HostComponent<NativeProps>>,
+    size: Int32,
+  ) => void;
   /** Adjust the current paragraph's indent level by `delta` (e.g. +1 or -1). */
   adjustIndent: (
     viewRef: React.ElementRef<HostComponent<NativeProps>>,
@@ -97,6 +108,8 @@ export const Commands: NativeCommands = codegenNativeCommands<NativeCommands>({
     'setAlignment',
     'setTextColor',
     'setLink',
+    'insertLink',
+    'setFontSize',
     'adjustIndent',
     'toggleList',
     'insertText',

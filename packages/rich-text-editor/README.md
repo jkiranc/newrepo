@@ -53,8 +53,9 @@ function Editor() {
 `focus` · `blur` · `getHTML` · `setHTML` · `toggleBold` · `toggleItalic` ·
 `toggleUnderline` · `toggleStrikethrough` · `toggleInlineStyle` (adds
 `superscript`/`subscript`) · `setBlockType` · `setAlignment` · `setTextColor` ·
-`setLink` · `adjustIndent` · `toggleList` (`bullet`/`ordered`/`check`) ·
-`insertText` · `insertImage` · `insertTable` · `insertEmbed` · `undo` · `redo`.
+`setLink` · `insertLink` (linked text with a custom label) · `setFontSize` ·
+`adjustIndent` · `toggleList` (`bullet`/`ordered`/`check`) · `insertText` ·
+`insertImage` · `insertTable` · `insertEmbed` · `undo` · `redo`.
 
 ## Registering a custom tag
 

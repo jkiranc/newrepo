@@ -47,6 +47,8 @@ const BLOCK_OPTIONS: { label: string; tag: string }[] = [
   { label: 'Heading 6', tag: 'h6' },
 ];
 
+const FONT_SIZES = [10, 12, 14, 16, 18, 24, 32, 48];
+
 const ALIGN_BUTTONS: { label: string; align: Alignment }[] = [
   { label: '⇤', align: 'left' },
   { label: '↔', align: 'center' },
@@ -82,6 +84,7 @@ export function Toolbar({
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [linkOpen, setLinkOpen] = useState(false);
   const [tableOpen, setTableOpen] = useState(false);
+  const [sizeOpen, setSizeOpen] = useState(false);
 
   // Optimistic local state so the font label / alignment highlight update the moment the user
   // picks an option. Falls back to the (optional) props, which a consumer can drive from
@@ -105,6 +108,17 @@ export function Toolbar({
           onPress={() => setFontOpen(true)}
         >
           <Text style={styles.dropdownLabel} numberOfLines={1}>{activeFontLabel}</Text>
+          <Text style={styles.caret}>▾</Text>
+        </TouchableOpacity>
+
+        {/* Font size dropdown */}
+        <TouchableOpacity
+          accessibilityRole="button"
+          accessibilityLabel="font-size"
+          style={styles.dropdown}
+          onPress={() => setSizeOpen(true)}
+        >
+          <Text style={styles.dropdownLabel} numberOfLines={1}>Size</Text>
           <Text style={styles.caret}>▾</Text>
         </TouchableOpacity>
 
@@ -195,6 +209,24 @@ export function Toolbar({
         ))}
       </Popover>
 
+      {/* Font size menu */}
+      <Popover visible={sizeOpen} onClose={() => setSizeOpen(false)}>
+        {FONT_SIZES.map((s) => (
+          <TouchableOpacity
+            key={s}
+            accessibilityRole="menuitem"
+            accessibilityLabel={`size-${s}`}
+            style={styles.menuItem}
+            onPress={() => {
+              editorRef.current?.setFontSize(s);
+              setSizeOpen(false);
+            }}
+          >
+            <Text style={styles.menuLabel}>{s}</Text>
+          </TouchableOpacity>
+        ))}
+      </Popover>
+
       {/* Color swatches */}
       <Popover visible={colorOpen} onClose={() => setColorOpen(false)}>
         <View style={styles.swatchGrid}>
@@ -254,14 +286,24 @@ export function Toolbar({
         />
       </Popover>
 
-      {/* Link URL input */}
-      <UrlInput
+      {/* Link input: optional display text + URL */}
+      <LinkInput
         visible={linkOpen}
-        title="Link URL"
-        placeholder="https://example.com"
         onClose={() => setLinkOpen(false)}
-        onSubmit={(url) => {
-          editorRef.current?.setLink(url.trim() || null);
+        onSubmit={(text, url) => {
+          const href = url.trim();
+          const label = text.trim();
+          if (label) {
+            // Insert new linked text (e.g. "Google" → https://google.com).
+            editorRef.current?.insertLink(label, href);
+          } else {
+            // No display text: apply/remove the link on the current selection.
+            editorRef.current?.setLink(href || null);
+          }
+          setLinkOpen(false);
+        }}
+        onRemove={() => {
+          editorRef.current?.setLink(null);
           setLinkOpen(false);
         }}
       />
@@ -269,45 +311,59 @@ export function Toolbar({
   );
 }
 
-/** A small modal with a text field for entering a URL. */
-function UrlInput({
+/**
+ * A modal for inserting/editing a link. The optional "Text" field lets the user name the link
+ * (e.g. "Google"); when left blank the link is applied to the current selection instead.
+ */
+function LinkInput({
   visible,
-  title,
-  placeholder,
   onClose,
   onSubmit,
+  onRemove,
 }: {
   visible: boolean;
-  title: string;
-  placeholder: string;
   onClose: () => void;
-  onSubmit: (value: string) => void;
+  onSubmit: (text: string, url: string) => void;
+  onRemove: () => void;
 }) {
-  const [value, setValue] = useState('');
+  const [text, setText] = useState('');
+  const [url, setUrl] = useState('');
+  const reset = () => {
+    setText('');
+    setUrl('');
+  };
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <Pressable style={styles.backdrop} onPress={onClose}>
         <Pressable style={styles.inputCard} onPress={() => {}}>
-          <Text style={styles.inputTitle}>{title}</Text>
+          <Text style={styles.inputTitle}>Link</Text>
+          <TextInput
+            value={text}
+            onChangeText={setText}
+            placeholder="Text (e.g. Google)"
+            autoCapitalize="none"
+            autoCorrect={false}
+            style={styles.input}
+          />
           <TextInput
             autoFocus
-            value={value}
-            onChangeText={setValue}
-            placeholder={placeholder}
+            value={url}
+            onChangeText={setUrl}
+            placeholder="https://example.com"
             autoCapitalize="none"
             autoCorrect={false}
             keyboardType="url"
-            style={styles.input}
+            style={[styles.input, styles.inputSpaced]}
           />
           <View style={styles.inputActions}>
-            <TouchableOpacity accessibilityRole="button" onPress={() => { setValue(''); onSubmit(''); }}>
+            <TouchableOpacity accessibilityRole="button" onPress={() => { reset(); onRemove(); }}>
               <Text style={styles.inputRemove}>Remove</Text>
             </TouchableOpacity>
             <View style={styles.inputActionsRight}>
               <TouchableOpacity accessibilityRole="button" onPress={onClose}>
                 <Text style={styles.inputCancel}>Cancel</Text>
               </TouchableOpacity>
-              <TouchableOpacity accessibilityRole="button" onPress={() => { onSubmit(value); setValue(''); }}>
+              <TouchableOpacity accessibilityRole="button" onPress={() => { onSubmit(text, url); reset(); }}>
                 <Text style={styles.inputOk}>OK</Text>
               </TouchableOpacity>
             </View>
@@ -500,6 +556,7 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: '#111',
   },
+  inputSpaced: { marginTop: 8 },
   inputActions: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 12 },
   inputActionsRight: { flexDirection: 'row', gap: 18 },
   inputRemove: { color: '#D93025', fontSize: 15 },

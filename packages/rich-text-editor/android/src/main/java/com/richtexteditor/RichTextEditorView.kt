@@ -1,11 +1,13 @@
 package com.richtexteditor
 
 import android.content.Context
+import android.graphics.Rect
 import android.text.Editable
 import android.text.InputType
 import android.text.Spannable
 import android.text.TextWatcher
 import android.view.Gravity
+import android.text.style.AbsoluteSizeSpan
 import android.text.style.AlignmentSpan
 import android.text.style.ForegroundColorSpan
 import android.text.style.LeadingMarginSpan
@@ -48,12 +50,16 @@ class RichTextEditorView(context: Context) : AppCompatEditText(context) {
   // Collapsed-caret styling: styles to apply to the next typed characters.
   private val pendingStyles = mutableSetOf<InlineStyle>()
   private var pendingColor: String? = null
+  private var pendingFontSize: Int = 0
   private var lastInsertStart = -1
   private var lastInsertCount = 0
   // Last non-empty selection, so toolbar popovers (which steal focus and collapse the
   // selection) can still apply to the range the user had highlighted.
   private var lastSelStart = 0
   private var lastSelEnd = 0
+  // Last known caret position, captured even for a collapsed caret (and again the instant focus
+  // is lost to a toolbar popover), so block-level ops target the paragraph the user was in.
+  private var lastCaret = 0
 
   // AppCompatEditText's constructor calls setText, which fires onSelectionChanged before this
   // class's fields are initialized. Guard callbacks until construction finishes to avoid NPEs.
@@ -118,7 +124,28 @@ class RichTextEditorView(context: Context) : AppCompatEditText(context) {
   /** Caret to use for block-level toolbar ops, tolerant of a popover collapsing the selection. */
   private fun toolbarCaret(): Int {
     val s = selectionStart
-    return if (s <= 0 && lastSelEnd > lastSelStart) lastSelStart else s
+    val editable = text
+    // A toolbar popover steals focus and can reset the live selection; fall back to the caret
+    // captured the instant focus was lost.
+    val caret = if (s >= 0) s else lastCaret
+    return if (editable != null) caret.coerceIn(0, editable.length) else caret
+  }
+
+  override fun onFocusChanged(focused: Boolean, direction: Int, previouslyFocusedRect: Rect?) {
+    super.onFocusChanged(focused, direction, previouslyFocusedRect)
+    // Remember where the caret/selection was right before a toolbar popover takes focus, so a
+    // subsequent block/inline command can still act on it.
+    if (!focused && initialized) {
+      val s = selectionStart
+      val e = selectionEnd
+      if (s >= 0) {
+        lastCaret = s
+        if (e > s) {
+          lastSelStart = s
+          lastSelEnd = e
+        }
+      }
+    }
   }
 
   fun setBlockType(tag: String) {
@@ -201,6 +228,55 @@ class RichTextEditorView(context: Context) : AppCompatEditText(context) {
     suppressEvents = false
     emitDocumentChange()
     setSelection(start, end)
+  }
+
+  fun setFontSize(size: Int) {
+    val editable = text ?: return
+    var start = selectionStart
+    var end = selectionEnd
+    if (end <= start && lastSelEnd > lastSelStart && lastSelEnd <= editable.length) {
+      start = lastSelStart
+      end = lastSelEnd
+    }
+    val density = resources.displayMetrics.density
+    if (end > start) {
+      suppressEvents = true
+      for (span in editable.getSpans(start, end, AbsoluteSizeSpan::class.java)) {
+        val ss = editable.getSpanStart(span)
+        val se = editable.getSpanEnd(span)
+        val px = span.size
+        editable.removeSpan(span)
+        if (ss < start) editable.setSpan(AbsoluteSizeSpan(px), ss, start, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+        if (se > end) editable.setSpan(AbsoluteSizeSpan(px), end, se, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+      }
+      if (size > 0) {
+        editable.setSpan(
+          AbsoluteSizeSpan((size * density).toInt()),
+          start, end, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE,
+        )
+      }
+      suppressEvents = false
+      emitDocumentChange()
+      setSelection(start, end)
+    } else {
+      pendingFontSize = size
+    }
+    notifySelectionChange(selectionStart, selectionEnd)
+  }
+
+  /** Insert `text` linked to `url` at the caret (for links entered with custom display text). */
+  fun insertLink(linkText: String, url: String) {
+    val editable = text ?: return
+    if (linkText.isEmpty()) return
+    val pos = toolbarCaret()
+    suppressEvents = true
+    editable.insert(pos, linkText)
+    if (url.isNotEmpty()) {
+      editable.setSpan(URLSpan(url), pos, pos + linkText.length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+    }
+    suppressEvents = false
+    setSelection(pos + linkText.length)
+    emitDocumentChange()
   }
 
   fun adjustIndent(delta: Int) {
@@ -293,11 +369,14 @@ class RichTextEditorView(context: Context) : AppCompatEditText(context) {
     super.onSelectionChanged(selStart, selEnd)
     // Fires during the superclass constructor (before fields exist) — bail until initialized.
     if (!initialized || suppressEvents) return
+    if (selStart >= 0) lastCaret = selStart
     if (selStart == selEnd) {
-      // Caret moved: refresh pending styles from what's active just before the caret.
+      // Caret moved: refresh pending styles/color/size from what's active just before the caret,
+      // so a run of characters keeps inheriting them (not just the first one).
       pendingStyles.clear()
       pendingStyles.addAll(stylesAt(selStart))
-      pendingColor = null
+      pendingColor = colorAt(selStart)
+      pendingFontSize = fontSizeAt(selStart)
     } else {
       // Remember the real range so a focus-stealing popover can still target it.
       lastSelStart = selStart
@@ -310,7 +389,7 @@ class RichTextEditorView(context: Context) : AppCompatEditText(context) {
 
   private fun applyPendingStyles() {
     val editable = text ?: return
-    if ((pendingStyles.isEmpty() && pendingColor == null) || lastInsertCount <= 0) return
+    if ((pendingStyles.isEmpty() && pendingColor == null && pendingFontSize <= 0) || lastInsertCount <= 0) return
     val start = lastInsertStart
     val end = minOf(editable.length, start + lastInsertCount)
     if (end <= start) return
@@ -321,6 +400,10 @@ class RichTextEditorView(context: Context) : AppCompatEditText(context) {
         editable.setSpan(ForegroundColorSpan(it), start, end, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
       }
     }
+    if (pendingFontSize > 0) {
+      val px = (pendingFontSize * resources.displayMetrics.density).toInt()
+      editable.setSpan(AbsoluteSizeSpan(px), start, end, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+    }
     suppressEvents = false
     lastInsertCount = 0
   }
@@ -329,6 +412,22 @@ class RichTextEditorView(context: Context) : AppCompatEditText(context) {
     val editable = text ?: return emptySet()
     if (pos <= 0) return emptySet()
     return StyleEngine.activeStyles(editable, pos - 1, pos)
+  }
+
+  /** The foreground color (as `#RRGGBB`) active just before the caret, or null if none. */
+  private fun colorAt(pos: Int): String? {
+    val editable = text ?: return null
+    if (pos <= 0) return null
+    val span = editable.getSpans(pos - 1, pos, ForegroundColorSpan::class.java).firstOrNull() ?: return null
+    return String.format("#%06X", 0xFFFFFF and span.foregroundColor)
+  }
+
+  /** The font size (in sp) active just before the caret, or 0 if none. */
+  private fun fontSizeAt(pos: Int): Int {
+    val editable = text ?: return 0
+    if (pos <= 0) return 0
+    val span = editable.getSpans(pos - 1, pos, AbsoluteSizeSpan::class.java).firstOrNull() ?: return 0
+    return (span.size / resources.displayMetrics.density).toInt()
   }
 
   // MARK: - Selection reporting
@@ -434,6 +533,9 @@ class RichTextEditorView(context: Context) : AppCompatEditText(context) {
         is URLSpan -> { run.put("link", span.url); styled = true }
         is ForegroundColorSpan -> {
           run.put("color", String.format("#%06X", 0xFFFFFF and span.foregroundColor)); styled = true
+        }
+        is AbsoluteSizeSpan -> {
+          run.put("fontSize", span.size / resources.displayMetrics.density); styled = true
         }
       }
     }
