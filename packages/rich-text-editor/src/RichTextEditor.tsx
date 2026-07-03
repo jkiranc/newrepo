@@ -172,6 +172,49 @@ export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>
       [emitHtml, applySegments],
     );
 
+    const removeSegment = useCallback(
+      (id: string) => {
+        const prev = segmentsRef.current;
+        const idx = prev.findIndex((s) => s.id === id);
+        if (idx < 0) return;
+        latest.current.delete(id);
+        let next = [...prev.slice(0, idx), ...prev.slice(idx + 1)];
+
+        // If the removed segment sat between two text segments, merge them into one so the
+        // document doesn't fragment into two editors with a gap where the table was.
+        const leftIdx = idx - 1;
+        const rightIdx = idx; // the segment that shifted into the removed slot
+        const left = next[leftIdx];
+        const right = next[rightIdx];
+        if (left?.type === 'text' && right?.type === 'text') {
+          const leftDoc = (latest.current.get(left.id) as RichTextDocument | undefined) ?? left.doc;
+          const rightDoc = (latest.current.get(right.id) as RichTextDocument | undefined) ?? right.doc;
+          const mergedDoc: RichTextDocument = { blocks: [...leftDoc.blocks, ...rightDoc.blocks] };
+          latest.current.set(left.id, mergedDoc);
+          latest.current.delete(right.id);
+          next = [...next.slice(0, rightIdx), ...next.slice(rightIdx + 1)];
+          activeTextId.current = left.id;
+          applySegments(next);
+          // Load the combined content into the surviving (already-mounted) left editor.
+          segRefs.current.get(left.id)?.replaceDocument(mergedDoc);
+          emitHtml(next);
+          return;
+        }
+
+        // No merge: make sure at least one text segment remains to type in.
+        if (!next.some((s) => s.type === 'text')) {
+          const t = newTextSegment();
+          latest.current.set(t.id, t.doc);
+          next = [...next, t];
+        }
+        activeTextId.current =
+          (next.find((s) => s.type === 'text')?.id) ?? activeTextId.current;
+        applySegments(next);
+        emitHtml(next);
+      },
+      [emitHtml, applySegments],
+    );
+
     useImperativeHandle(
       ref,
       (): RichTextEditorRef => ({
@@ -233,6 +276,7 @@ export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>
                 activeTextId.current = null;
               }}
               onChange={(rows, header) => handleTableChange(seg.id, rows, header)}
+              onDelete={() => removeSegment(seg.id)}
             />
           ) : (
             <TextSegmentEditor

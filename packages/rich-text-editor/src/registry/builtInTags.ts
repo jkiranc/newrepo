@@ -67,7 +67,8 @@ function serializeCssFromRun(run: StyleRun): SerializedTag | null {
   if (run.fontSize) {
     parts.push(`font-size: ${run.fontSize}px`);
   }
-  if (run.fontFamily) {
+  // Monospace is represented by the semantic <code> tag, so don't also emit it as a span style.
+  if (run.fontFamily && run.fontFamily !== 'monospace') {
     parts.push(`font-family: ${run.fontFamily}`);
   }
   if (parts.length === 0) {
@@ -161,7 +162,9 @@ export function installBuiltInTags(registry: TagRegistry): void {
   registry.register({
     tag: 'blockquote',
     category: 'block',
-    toBlock: () => ({ tag: 'blockquote', indentLevel: 1 }),
+    // No model indent — the native renderer indents blockquotes by tag, and carrying an
+    // indentLevel here would round-trip as a spurious `margin-left` on the <blockquote>.
+    toBlock: () => ({ tag: 'blockquote' }),
     fromBlock: (block) =>
       block.tag === 'blockquote' ? { tag: 'blockquote', attrs: {} } : null,
   });

@@ -186,21 +186,28 @@ function serializeBlock(block: BlockNode, registry: TagRegistry): string {
     return serializeTable(table);
   }
   const tag = registry.serializeBlock(block) ?? { tag: block.tag || 'p', attrs: {} };
-  const attrs = withAlignment(tag.attrs, block.align);
+  const attrs = withBlockStyle(tag.attrs, block);
   const withAttrs: SerializedTag = { ...tag, attrs };
   return `${openTag(withAttrs)}${serializeInline(block, registry)}${closeTag(withAttrs)}`;
 }
 
-/** Merge a `text-align` declaration into a block tag's inline style, if the block is aligned. */
-function withAlignment(
+/** Merge block-level style declarations (alignment, indent) into a block tag's style attr. */
+function withBlockStyle(
   attrs: Record<string, string>,
-  align: BlockNode['align'],
+  block: BlockNode,
 ): Record<string, string> {
-  if (!align || align === 'left') {
+  const parts: string[] = [];
+  if (block.align && block.align !== 'left') {
+    parts.push(`text-align: ${block.align}`);
+  }
+  if (block.indentLevel && block.indentLevel > 0) {
+    parts.push(`margin-left: ${block.indentLevel * 2}em`);
+  }
+  if (parts.length === 0) {
     return attrs;
   }
   const existing = attrs.style ? `${attrs.style.replace(/;\s*$/, '')}; ` : '';
-  return { ...attrs, style: `${existing}text-align: ${align}` };
+  return { ...attrs, style: `${existing}${parts.join('; ')}` };
 }
 
 type ListKind = 'ul' | 'ol';

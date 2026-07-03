@@ -367,6 +367,26 @@ function alignmentFromAttrs(attrs: Record<string, string>): Alignment | undefine
   return undefined;
 }
 
+/** Read an indent level from a `margin-left` / `padding-left` declaration (2em or 20px per level). */
+function indentFromAttrs(attrs: Record<string, string>): number | undefined {
+  const css = parseInlineStyle(attrs.style);
+  const raw = css['margin-left'] ?? css['padding-left'];
+  if (!raw) {
+    return undefined;
+  }
+  const value = parseFloat(raw);
+  if (Number.isNaN(value) || value <= 0) {
+    return undefined;
+  }
+  if (raw.includes('em')) {
+    return Math.max(0, Math.round(value / 2));
+  }
+  if (raw.includes('px')) {
+    return Math.max(0, Math.round(value / 20));
+  }
+  return undefined;
+}
+
 /** Walk block-level flow, grouping loose inline content into implicit paragraphs. */
 function processFlow(
   nodes: HtmlNode[],
@@ -411,6 +431,10 @@ function processFlow(
       const align = alignmentFromAttrs(node.attrs);
       if (align) {
         b.align = align;
+      }
+      const indent = indentFromAttrs(node.attrs);
+      if (indent) {
+        b.indentLevel = indent;
       }
       processInline(node.children, b, registry, emptyStyle(), ids);
       blocks.push(finalize(b));

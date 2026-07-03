@@ -20,6 +20,8 @@ export interface EditableTableProps {
   onChange?: (rows: string[][], header: boolean) => void;
   /** Fires when any cell gains focus (so a container can mark this segment active). */
   onFocus?: () => void;
+  /** Fires when the user removes the whole table (so a container can drop the segment). */
+  onDelete?: () => void;
   style?: StyleProp<ViewStyle>;
 }
 
@@ -47,6 +49,7 @@ export function EditableTable({
   editable = true,
   onChange,
   onFocus,
+  onDelete,
   style,
 }: EditableTableProps) {
   const [grid, setGrid] = useState<string[][]>(() => rectangular(rows));
@@ -154,6 +157,9 @@ export function EditableTable({
             onPress={toggleHeader}
             accessibilityLabel="table-toggle-header"
           />
+          {onDelete && (
+            <Ctl label="🗑 Table" onPress={onDelete} accessibilityLabel="table-delete" danger />
+          )}
         </View>
       )}
     </View>
@@ -164,21 +170,25 @@ function Ctl({
   label,
   onPress,
   active,
+  danger,
   accessibilityLabel,
 }: {
   label: string;
   onPress: () => void;
   active?: boolean;
+  danger?: boolean;
   accessibilityLabel: string;
 }) {
   return (
     <TouchableOpacity
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel}
-      style={[styles.ctl, active && styles.ctlActive]}
+      style={[styles.ctl, active && styles.ctlActive, danger && styles.ctlDanger]}
       onPress={onPress}
     >
-      <Text style={[styles.ctlText, active && styles.ctlTextActive]}>{label}</Text>
+      <Text style={[styles.ctlText, active && styles.ctlTextActive, danger && styles.ctlTextDanger]}>
+        {label}
+      </Text>
     </TouchableOpacity>
   );
 }
@@ -209,6 +219,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
   },
   ctlActive: { backgroundColor: '#DCEEFF', borderColor: '#1A73E8' },
+  ctlDanger: { borderColor: '#D93025' },
   ctlText: { fontSize: 13, color: '#333' },
   ctlTextActive: { color: '#1A73E8', fontWeight: '600' },
+  ctlTextDanger: { color: '#D93025' },
 });
