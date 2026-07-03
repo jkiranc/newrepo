@@ -87,6 +87,7 @@ class RichTextEditorView(context: Context) : AppCompatEditText(context) {
       override fun afterTextChanged(s: Editable?) {
         if (!initialized || suppressEvents) return
         applyPendingStyles()
+        normalizeBlockSpans()
         stripCollapsedBlockSpans()
         emitDocumentChange()
         // Content may have grown/shrunk; report the new height once layout settles.
@@ -132,6 +133,31 @@ class RichTextEditorView(context: Context) : AppCompatEditText(context) {
             editable.removeSpan(span)
           }
         }
+      }
+    }
+  }
+
+  /**
+   * Confine each block-level span to the single paragraph it starts in. Block spans are applied
+   * INCLUSIVE_INCLUSIVE so typing within a heading/list line extends them, but that also lets
+   * them bleed across a newline into the next paragraph as you keep typing — which made a
+   * heading "leak" onto following lines and corrupted per-paragraph tag reconstruction. Clipping
+   * each block span at its paragraph's end keeps one paragraph = one block.
+   */
+  private fun normalizeBlockSpans() {
+    val editable = text ?: return
+    val len = editable.length
+    for (span in editable.getSpans(0, len, Any::class.java)) {
+      val isBlockSpan = span is BlockTagSpan || span is HeadingSizeSpan ||
+        span is ListMarkerSpan || span is LeadingMarginSpan || span is AlignmentSpan
+      if (!isBlockSpan) continue
+      val start = editable.getSpanStart(span)
+      val end = editable.getSpanEnd(span)
+      if (start < 0 || end < 0) continue
+      var paragraphEnd = start
+      while (paragraphEnd < len && editable[paragraphEnd] != '\n') paragraphEnd++
+      if (end > paragraphEnd) {
+        editable.setSpan(span, start, paragraphEnd, editable.getSpanFlags(span))
       }
     }
   }
