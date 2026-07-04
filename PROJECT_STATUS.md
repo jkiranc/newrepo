@@ -185,8 +185,11 @@ also lets them **bleed across newlines**. Guards (all in `RichTextEditorView.kt`
   metro.config for the monorepo).
 - **Native code cannot be compiled locally** (no Xcode/Android SDK in the dev env). Verification
   = CI APK build + Jest + `tsc`.
-- To test a change on-device: commit → push → wait for the `Android APK` run to go green →
+- To test a change on-device via CI: commit → push → wait for the `Android APK` run to go green →
   download the artifact.
+- **Local builds:** `scripts/local-android.sh` replicates CI on your machine (generates a host
+  RN app, links the library, runs/builds). See `LOCAL_DEV.md` for the full local workflow
+  (JS-only checks, dev run with Fast Refresh, and building a sideloadable APK).
 
 ---
 

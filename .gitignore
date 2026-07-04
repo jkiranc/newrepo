@@ -28,6 +28,10 @@ DerivedData/
 .metro-health-check*
 .expo/
 
+# locally-generated RN host app (see scripts/local-android.sh)
+/host/
+/.package.json.bak
+
 # logs
 *.log
 npm-debug.*
