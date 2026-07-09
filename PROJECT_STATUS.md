@@ -104,6 +104,12 @@ tables can also be drawn as embeds, but the editable-table segment path is the d
 **Links UX:** tapping a link shows a built-in popover → **Open** (launches URL), **Edit**
 (change href), **Remove**. Consumers can override via the `onLinkPress` prop (return `true`).
 
+**Read-only renderer:** `RichTextViewer` (`src/RichTextViewer/RichTextViewer.tsx`) — a
+lightweight, **pure-RN** (no native view) component that renders the editor's HTML read-only
+with tappable links and full styling (headings, lists, blockquote, alignment, indent, images,
+chips, tables). Use it for previews/feeds/messages where editing isn't needed — far cheaper
+than mounting the editor. Example: `Preview` tab pastes HTML and renders it below.
+
 **Other:** undo/redo (per text segment, JS snapshot stack), emoji/text insertion.
 
 **Toolbar** (`src/Toolbar/Toolbar.tsx`): font/block dropdown (Normal + H1–H6), font-size

@@ -3,18 +3,20 @@ import { SafeAreaView, StyleSheet, Text, TouchableOpacity, View } from 'react-na
 
 import { BasicDemo } from './src/screens/BasicDemo';
 import { CustomTagDemo } from './src/screens/CustomTagDemo';
+import { PreviewDemo } from './src/screens/PreviewDemo';
 
-type Screen = 'basic' | 'custom';
+type Screen = 'basic' | 'custom' | 'preview';
 
 export default function App() {
   const [screen, setScreen] = useState<Screen>('basic');
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.tabs}>
-        <Tab label="Built-in tags" active={screen === 'basic'} onPress={() => setScreen('basic')} />
-        <Tab label="Custom <mention>" active={screen === 'custom'} onPress={() => setScreen('custom')} />
+        <Tab label="Editor" active={screen === 'basic'} onPress={() => setScreen('basic')} />
+        <Tab label="Custom" active={screen === 'custom'} onPress={() => setScreen('custom')} />
+        <Tab label="Preview" active={screen === 'preview'} onPress={() => setScreen('preview')} />
       </View>
-      {screen === 'basic' ? <BasicDemo /> : <CustomTagDemo />}
+      {screen === 'basic' ? <BasicDemo /> : screen === 'custom' ? <CustomTagDemo /> : <PreviewDemo />}
     </SafeAreaView>
   );
 }

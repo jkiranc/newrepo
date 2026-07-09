@@ -14,6 +14,10 @@ export type { ToolbarProps } from './Toolbar/Toolbar';
 export { EditableTable } from './EditableTable/EditableTable';
 export type { EditableTableProps } from './EditableTable/EditableTable';
 
+// Read-only HTML renderer (lightweight, pure-RN; for previews/feeds/messages)
+export { RichTextViewer } from './RichTextViewer/RichTextViewer';
+export type { RichTextViewerProps } from './RichTextViewer/RichTextViewer';
+
 // Inline-blocks segmentation model (advanced use)
 export {
   htmlToSegments,
