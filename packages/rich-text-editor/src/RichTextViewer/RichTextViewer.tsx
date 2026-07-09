@@ -128,7 +128,16 @@ function renderInline(
       continue;
     }
     const run = runCovering(styleRuns, i);
-    const end = run ? run.start + run.length : i + 1;
+    // Consume the covered run, or (when unstyled) up to the next run/embed — not one char at a time.
+    let end: number;
+    if (run) {
+      end = run.start + run.length;
+    } else {
+      end = text.length;
+      for (const r of styleRuns) {
+        if (r.start > i && r.start < end) end = r.start;
+      }
+    }
     let j = i;
     let str = '';
     while (j < end && !embedByOffset.has(j)) {

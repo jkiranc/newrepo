@@ -98,4 +98,37 @@ describe('reliability / edge cases', () => {
     expect(() => rt('<ul><li>a')).not.toThrow();
     expect(() => rt('<table><tr><td>x')).not.toThrow();
   });
+
+  it('a full HTML document renders only body content (head/title dropped, no merging)', () => {
+    const html =
+      '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">' +
+      '<title>Doc Title</title></head><body>' +
+      '<h1>Heading</h1><p>Body paragraph.</p></body></html>';
+    expect(rt(html)).toBe('<h1>Heading</h1><p>Body paragraph.</p>');
+  });
+
+  it('structural wrappers (div/section/header) are transparent around block content', () => {
+    expect(rt('<div><h1>A</h1><p>B</p></div>')).toBe('<h1>A</h1><p>B</p>');
+    expect(rt('<section><h2>X</h2></section><footer><p>Y</p></footer>')).toBe(
+      '<h2>X</h2><p>Y</p>',
+    );
+  });
+
+  it('a div with only inline content keeps its content in one block', () => {
+    const out = rt('<div>hello <strong>world</strong></div>');
+    expect(out).toContain('hello ');
+    expect(out).toContain('<strong>world</strong>');
+    expect(rt(out)).toBe(out); // idempotent
+  });
+
+  it('script/style content is dropped, not rendered', () => {
+    expect(rt('<p>a</p><script>var x = 1;</script><style>.c{color:red}</style><p>b</p>')).toBe(
+      '<p>a</p><p>b</p>',
+    );
+  });
+
+  it('headings separated by comments and wrappers stay distinct', () => {
+    const html = '<h2>One</h2><!-- c --><h2>Two</h2><div><p>Three</p></div>';
+    expect(rt(html)).toBe('<h2>One</h2><h2>Two</h2><p>Three</p>');
+  });
 });

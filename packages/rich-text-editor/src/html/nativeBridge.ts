@@ -403,6 +403,38 @@ function indentFromAttrs(attrs: Record<string, string>): number | undefined {
   return undefined;
 }
 
+// Document / metadata tags whose content is not visible body content — dropped entirely.
+const SKIP_TAGS = new Set([
+  'head', 'title', 'meta', 'link', 'script', 'style', 'base', 'noscript', '!doctype',
+]);
+
+// Structural wrappers that hold flow content. When they contain block-level children they are
+// treated as transparent (their children are lifted into the surrounding flow) so a full HTML
+// document — <html><body><div>…</div></body></html> — doesn't collapse into one paragraph.
+const CONTAINER_TAGS = new Set([
+  'html', 'body', 'section', 'article', 'header', 'footer', 'main', 'nav', 'aside',
+  'figure', 'figcaption', 'div', 'form', 'fieldset', 'details',
+]);
+
+/** True if a node has at least one block-level child (list/table/container/registered block). */
+function hasBlockChild(node: HtmlNode, registry: TagRegistry): boolean {
+  if (!isElement(node)) {
+    return false;
+  }
+  return node.children.some((c) => {
+    if (!isElement(c)) {
+      return false;
+    }
+    if (c.tag === 'ul' || c.tag === 'ol' || c.tag === 'table') {
+      return true;
+    }
+    if (CONTAINER_TAGS.has(c.tag)) {
+      return true;
+    }
+    return registry.get(c.tag)?.category === 'block';
+  });
+}
+
 /** Walk block-level flow, grouping loose inline content into implicit paragraphs. */
 function processFlow(
   nodes: HtmlNode[],
@@ -425,6 +457,19 @@ function processFlow(
       }
       pending ??= newBlock(ids, { tag: 'p' });
       appendText(pending, node.text, emptyStyle());
+      continue;
+    }
+
+    // Drop document/metadata tags (<head>, <title>, <meta>, <script>, …) and their contents.
+    if (SKIP_TAGS.has(node.tag)) {
+      continue;
+    }
+
+    // Lift the children of a structural wrapper (<html>, <body>, <div> containing blocks, …) into
+    // the surrounding flow so its block children aren't flattened into one paragraph.
+    if (CONTAINER_TAGS.has(node.tag) && hasBlockChild(node, registry)) {
+      flush();
+      processFlow(node.children, blocks, registry, ids);
       continue;
     }
 
