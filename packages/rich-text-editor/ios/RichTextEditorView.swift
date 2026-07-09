@@ -350,6 +350,9 @@ public final class RichTextEditorViewImpl: NSObject, UITextViewDelegate {
               let json = String(data: data, encoding: .utf8) else { return }
         document = rebuilt
         onDocumentChangeJSON?(json)
+        // A block-type change (e.g. Normal→Heading) grows the content without a typing event, so
+        // re-measure the height or the taller line gets clipped until the next keystroke.
+        DispatchQueue.main.async { [weak self] in self?.reportContentHeight() }
     }
 
     // MARK: - Attributed string → document

@@ -90,9 +90,7 @@ class RichTextEditorView(context: Context) : AppCompatEditText(context) {
         applyPendingStyles()
         normalizeBlockSpans()
         stripCollapsedBlockSpans()
-        emitDocumentChange()
-        // Content may have grown/shrunk; report the new height once layout settles.
-        post { reportContentHeight() }
+        emitDocumentChange() // also re-measures content height
       }
     })
     initialized = true
@@ -562,6 +560,9 @@ class RichTextEditorView(context: Context) : AppCompatEditText(context) {
     }
     val doc = JSONObject().put("blocks", blocks)
     onDocumentChange?.invoke(doc.toString())
+    // Any content change can alter the intrinsic height (e.g. Normal→Heading makes the line
+    // taller) even without typing, so re-measure once layout settles or the taller line clips.
+    post { reportContentHeight() }
   }
 
   private fun buildBlockJson(editable: Editable, start: Int, end: Int, index: Int): JSONObject {
