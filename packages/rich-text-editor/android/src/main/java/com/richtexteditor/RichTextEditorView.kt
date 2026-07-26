@@ -38,7 +38,8 @@ import org.json.JSONObject
 class RichTextEditorView(context: Context) : AppCompatEditText(context) {
 
   var onDocumentChange: ((String) -> Unit)? = null
-  var onSelectionChangeListener: ((String, Int, Int, String) -> Unit)? = null
+  /** (blockId, start, end, activeStyles, blockTag, align, listType) */
+  var onSelectionChangeListener: ((String, Int, Int, String, String, String, String) -> Unit)? = null
   var onEmbedPress: ((String, String) -> Unit)? = null
   var onLinkPress: ((String, Int, Int) -> Unit)? = null
   var onContentSizeChange: ((Double) -> Unit)? = null
@@ -531,7 +532,27 @@ class RichTextEditorView(context: Context) : AppCompatEditText(context) {
   // MARK: - Selection reporting
 
   private fun notifySelectionChange(start: Int, end: Int) {
-    onSelectionChangeListener?.invoke(currentBlockId, start, end, activeStylesString(start, end))
+    // Report the caret's paragraph so a toolbar can reflect the real block type / alignment
+    // instead of holding stale optimistic state.
+    var blockTag = "p"
+    var align = ""
+    var listType = ""
+    val editable = text
+    if (editable != null) {
+      val (ps, pe) = currentParagraphRange(editable, start.coerceIn(0, editable.length))
+      if (pe > ps) {
+        editable.getSpans(ps, pe, BlockTagSpan::class.java)
+          .firstOrNull { editable.getSpanStart(it) in ps until pe }
+          ?.let {
+            blockTag = it.tag
+            align = it.align ?: ""
+            listType = it.listType ?: ""
+          }
+      }
+    }
+    onSelectionChangeListener?.invoke(
+      currentBlockId, start, end, activeStylesString(start, end), blockTag, align, listType,
+    )
   }
 
   private fun activeStylesString(start: Int, end: Int): String {

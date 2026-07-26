@@ -23,9 +23,20 @@ export interface NativeProps extends ViewProps {
 
   /** Fires (debounced) whenever the native buffer changes; payload is a serialized document. */
   onDocumentChange?: DirectEventHandler<Readonly<{ documentJson: string }>>;
-  /** Fires when the caret/selection moves. `activeStyles` is a comma-joined list. */
+  /**
+   * Fires when the caret/selection moves. `activeStyles` is a comma-joined list; `blockTag`,
+   * `align` and `listType` describe the paragraph holding the caret so a toolbar can reflect it.
+   */
   onSelectionChange?: DirectEventHandler<
-    Readonly<{ blockId: string; start: Int32; end: Int32; activeStyles: string }>
+    Readonly<{
+      blockId: string;
+      start: Int32;
+      end: Int32;
+      activeStyles: string;
+      blockTag: string;
+      align: string;
+      listType: string;
+    }>
   >;
   /** Fires when an embed (image/chip) is tapped; `dataJson` is the embed's serialized data. */
   onEmbedPress?: DirectEventHandler<Readonly<{ tag: string; dataJson: string }>>;

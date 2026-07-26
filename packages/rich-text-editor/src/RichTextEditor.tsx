@@ -43,6 +43,12 @@ export interface SelectionChange {
   start: number;
   end: number;
   activeStyles: InlineStyleName[];
+  /** The caret's block tag (`p`, `h1`…), so a toolbar can show the real current block. */
+  blockTag: string;
+  /** The caret's paragraph alignment. */
+  align: Alignment;
+  /** The caret's list type, or `''` when the paragraph isn't a list item. */
+  listType: string;
 }
 
 export interface RichTextEditorProps {
@@ -325,8 +331,16 @@ export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>
                 setActiveTableId(null);
               }}
               onChangeDoc={(doc) => handleTextChange(seg.id, doc)}
-              onSelectionActiveStyles={(activeStyles) =>
-                onSelectionChange?.({ blockId: seg.id, start: 0, end: 0, activeStyles })
+              onSelectionActiveStyles={(activeStyles, block) =>
+                onSelectionChange?.({
+                  blockId: seg.id,
+                  start: 0,
+                  end: 0,
+                  activeStyles,
+                  blockTag: block.blockTag,
+                  align: (block.align || 'left') as Alignment,
+                  listType: block.listType,
+                })
               }
               onEmbedPress={onEmbedPress}
               onLinkPress={(url, start, end) => {

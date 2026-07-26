@@ -19,6 +19,9 @@ class SelectionChangeEvent(
   private val start: Int,
   private val end: Int,
   private val styles: String,
+  private val blockTag: String,
+  private val align: String,
+  private val listType: String,
 ) : Event<SelectionChangeEvent>(viewId) {
   override fun getEventName() = "onSelectionChange"
   override fun getEventData(): WritableMap = Arguments.createMap().apply {
@@ -26,6 +29,9 @@ class SelectionChangeEvent(
     putInt("start", start)
     putInt("end", end)
     putString("activeStyles", styles)
+    putString("blockTag", blockTag)
+    putString("align", align)
+    putString("listType", listType)
   }
 }
 

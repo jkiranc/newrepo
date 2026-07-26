@@ -31,17 +31,28 @@ function prettyHtml(html: string): string {
 export function BasicDemo() {
   const editorRef = useRef<RichTextEditorRef>(null);
   const [activeStyles, setActiveStyles] = useState<SelectionChange['activeStyles']>([]);
+  const [blockTag, setBlockTag] = useState('p');
+  const [align, setAlign] = useState<SelectionChange['align']>('left');
   const [html, setHtml] = useState('');
 
   return (
     <View style={styles.container}>
-      <Toolbar editorRef={editorRef} activeStyles={activeStyles} />
+      <Toolbar
+        editorRef={editorRef}
+        activeStyles={activeStyles}
+        activeBlockType={blockTag}
+        activeAlignment={align}
+      />
       <ScrollView style={styles.editorScroll} keyboardShouldPersistTaps="handled">
         <RichTextEditor
           ref={editorRef}
           placeholder="Start typing…"
           onChangeHtml={setHtml}
-          onSelectionChange={(s) => setActiveStyles(s.activeStyles)}
+          onSelectionChange={(s) => {
+            setActiveStyles(s.activeStyles);
+            setBlockTag(s.blockTag);
+            setAlign(s.align);
+          }}
           style={styles.editor}
         />
       </ScrollView>

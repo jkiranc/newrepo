@@ -38,8 +38,10 @@ class RichTextEditorViewManager :
     view.onDocumentChange = { json ->
       dispatcher?.dispatchEvent(DocumentChangeEvent(view.id, json))
     }
-    view.onSelectionChangeListener = { blockId, start, end, styles ->
-      dispatcher?.dispatchEvent(SelectionChangeEvent(view.id, blockId, start, end, styles))
+    view.onSelectionChangeListener = { blockId, start, end, styles, blockTag, align, listType ->
+      dispatcher?.dispatchEvent(
+        SelectionChangeEvent(view.id, blockId, start, end, styles, blockTag, align, listType),
+      )
     }
     view.onEmbedPress = { tag, dataJson ->
       dispatcher?.dispatchEvent(EmbedPressEvent(view.id, tag, dataJson))

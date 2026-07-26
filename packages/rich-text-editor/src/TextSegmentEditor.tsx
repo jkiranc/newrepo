@@ -53,7 +53,10 @@ export interface TextSegmentEditorProps {
   registry?: TagRegistry;
   onChangeDoc?: (doc: RichTextDocument) => void;
   onActive?: () => void;
-  onSelectionActiveStyles?: (styles: InlineStyleName[]) => void;
+  onSelectionActiveStyles?: (
+    styles: InlineStyleName[],
+    block: { blockTag: string; align: string; listType: string },
+  ) => void;
   onEmbedPress?: (tag: string, data: Record<string, string>) => void;
   onLinkPress?: (url: string, start: number, end: number) => void;
   style?: StyleProp<ViewStyle>;
@@ -135,9 +138,10 @@ export const TextSegmentEditor = forwardRef<TextSegmentRef, TextSegmentEditorPro
     >(
       (event) => {
         onActive?.();
-        const { activeStyles } = event.nativeEvent;
+        const { activeStyles, blockTag, align, listType } = event.nativeEvent;
         onSelectionActiveStyles?.(
           activeStyles ? (activeStyles.split(',').filter(Boolean) as InlineStyleName[]) : [],
+          { blockTag: blockTag || 'p', align: align || 'left', listType: listType || '' },
         );
       },
       [onActive, onSelectionActiveStyles],

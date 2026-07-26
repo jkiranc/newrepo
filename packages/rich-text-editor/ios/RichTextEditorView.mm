@@ -50,8 +50,10 @@ using namespace facebook::react;
     _impl.onDocumentChangeJSON = ^(NSString *json) {
       [weakSelf emitDocumentChange:json];
     };
-    _impl.onSelectionChangeBlock = ^(NSString *blockId, NSInteger start, NSInteger end, NSString *styles) {
-      [weakSelf emitSelectionChange:blockId start:start end:end styles:styles];
+    _impl.onSelectionChangeBlock = ^(NSString *blockId, NSInteger start, NSInteger end, NSString *styles,
+                                     NSString *blockTag, NSString *align, NSString *listType) {
+      [weakSelf emitSelectionChange:blockId start:start end:end styles:styles
+                           blockTag:blockTag align:align listType:listType];
     };
     _impl.onEmbedPressBlock = ^(NSString *tag, NSString *dataJson) {
       [weakSelf emitEmbedPress:tag dataJson:dataJson];
@@ -116,7 +118,13 @@ using namespace facebook::react;
       ->onDocumentChange({.documentJson = std::string(json.UTF8String)});
 }
 
-- (void)emitSelectionChange:(NSString *)blockId start:(NSInteger)start end:(NSInteger)end styles:(NSString *)styles
+- (void)emitSelectionChange:(NSString *)blockId
+                      start:(NSInteger)start
+                        end:(NSInteger)end
+                     styles:(NSString *)styles
+                   blockTag:(NSString *)blockTag
+                      align:(NSString *)align
+                   listType:(NSString *)listType
 {
   if (_eventEmitter == nullptr) { return; }
   std::static_pointer_cast<const RichTextEditorViewEventEmitter>(_eventEmitter)
@@ -125,6 +133,9 @@ using namespace facebook::react;
           .start = static_cast<int>(start),
           .end = static_cast<int>(end),
           .activeStyles = std::string(styles.UTF8String),
+          .blockTag = std::string(blockTag.UTF8String),
+          .align = std::string(align.UTF8String),
+          .listType = std::string(listType.UTF8String),
       });
 }
 

@@ -125,7 +125,8 @@ undo/redo.
 `setAlignment`, `setTextColor`, `setLink`, `insertLink`, `setLinkRange`, `setFontSize`,
 `adjustIndent`, `toggleList`, `insertText`, `insertEmbed`.
 
-**Events:** `onDocumentChange`, `onSelectionChange`, `onEmbedPress`, `onContentSizeChange`,
+**Events:** `onDocumentChange`, `onSelectionChange` (carries `blockTag`/`align`/`listType` for the
+caret's paragraph so a toolbar reflects real state), `onEmbedPress`, `onContentSizeChange`,
 `onLinkPress`.
 
 > Codegen rule: each command's first arg must be written literally as
@@ -222,11 +223,10 @@ also lets them **bleed across newlines**. Guards (all in `RichTextEditorView.kt`
 
 ## 10. Known limitations / pending
 
-- **iOS parity for the heading-bleed fixes** — Android got `normalizeBlockSpans` +
-  span-origin attribution; iOS uses attributes (not expanding spans) and hasn't been audited for
-  the same symptom. Check if iOS needs an equivalent.
 - **iOS lists** render as indentation only (no bullet/number glyph); **iOS checklist
   tap-toggle** not implemented (Android has both).
+- **Undo/redo is per text segment** — undoing does not remove an inserted table, and history is
+  not shared across segments.
 - **Inline styles carry across paragraph breaks** (e.g. bold continues after Enter). Standard
   behavior, but a "clean new line" option could be added if desired.
 - **Open verification:** confirm the heading fix on device — test: type `Line A` → set

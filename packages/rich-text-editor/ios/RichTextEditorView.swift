@@ -15,11 +15,14 @@ public final class RichTextEditorViewImpl: NSObject, UITextViewDelegate {
 
     @objc public let textView: UITextView
     @objc public var onDocumentChangeJSON: ((String) -> Void)?
-    @objc public var onSelectionChangeBlock: ((String, Int, Int, String) -> Void)?
+    /// (blockId, start, end, activeStyles, blockTag, align, listType)
+    @objc public var onSelectionChangeBlock: ((String, Int, Int, String, String, String, String) -> Void)?
     @objc public var onEmbedPressBlock: ((String, String) -> Void)?
     @objc public var onLinkPressBlock: ((String, Int, Int) -> Void)?
     @objc public var onContentHeightChange: ((CGFloat) -> Void)?
     private var lastReportedHeight: CGFloat = -1
+    /// Set when a newline was just typed, so the new paragraph's block styling can be reset.
+    private var pendingParagraphReset = false
 
     private var document = RichTextDocument(blocks: [])
     private var didSeedInitialDocument = false
@@ -121,7 +124,12 @@ public final class RichTextEditorViewImpl: NSObject, UITextViewDelegate {
         guard range.length > 0 else { return }
         let baseFont = SpanApplier.font(forTag: tag)
         let align = string.attribute(.rteAlign, at: range.location, effectiveRange: nil) as? String
-        let paragraph = SpanApplier.paragraphStyle(forTag: tag, listType: nil, indentLevel: nil, align: align)
+        // Preserve the paragraph's list membership and indent — changing the block type must not
+        // silently drop them (the stamped rteListType/rteIndentLevel attributes survive, so the
+        // paragraph style has to keep matching them or the indent visually disappears).
+        let listType = string.attribute(.rteListType, at: range.location, effectiveRange: nil) as? String
+        let indent = string.attribute(.rteIndentLevel, at: range.location, effectiveRange: nil) as? Int
+        let paragraph = SpanApplier.paragraphStyle(forTag: tag, listType: listType, indentLevel: indent, align: align)
         string.enumerateAttribute(.font, in: range) { value, sub, _ in
             let traits = (value as? UIFont)?.fontDescriptor.symbolicTraits ?? []
             var font = baseFont
@@ -326,9 +334,73 @@ public final class RichTextEditorViewImpl: NSObject, UITextViewDelegate {
 
     // MARK: - UITextViewDelegate
 
+    public func textView(
+        _ textView: UITextView,
+        shouldChangeTextIn range: NSRange,
+        replacementText text: String
+    ) -> Bool {
+        // Starting a new paragraph must not inherit the previous one's block styling (heading,
+        // list, indent) — the iOS counterpart of Android's normalizeBlockSpans. typingAttributes
+        // would otherwise carry rteBlockTag/font/paragraphStyle onto the new line, so a heading
+        // would "continue" onto every following line.
+        if text.contains("\n") { pendingParagraphReset = true }
+        return true
+    }
+
     public func textViewDidChange(_ textView: UITextView) {
+        if pendingParagraphReset {
+            pendingParagraphReset = false
+            resetBlockAttributesAtCaret()
+        }
         scheduleDocumentChange()
         reportContentHeight()
+    }
+
+    /// Clear block-level styling from the paragraph holding the caret so a freshly-started
+    /// paragraph renders (and reconstructs) as a plain `p`.
+    private func resetBlockAttributesAtCaret() {
+        guard let current = textView.attributedText else { return }
+        let nsText = current.string as NSString
+        let caret = min(textView.selectedRange.location, nsText.length)
+        let paragraph = nsText.paragraphRange(for: NSRange(location: caret, length: 0))
+        let mutable = NSMutableAttributedString(attributedString: current)
+        let bodyFont = UIFont.systemFont(ofSize: SpanApplier.defaultFontSize)
+        let bodyStyle = SpanApplier.paragraphStyle(forTag: "p", listType: nil, indentLevel: nil, align: nil)
+
+        if paragraph.length > 0 {
+            for key in [NSAttributedString.Key.rteBlockTag, .rteListType, .rteListDepth,
+                        .rteIndentLevel, .rteAlign, .rteChecked] {
+                mutable.removeAttribute(key, range: paragraph)
+            }
+            mutable.addAttribute(.paragraphStyle, value: bodyStyle, range: paragraph)
+            // Keep inline traits (bold/italic) but drop the heading's larger base size.
+            mutable.enumerateAttribute(.font, in: paragraph) { value, sub, _ in
+                let traits = (value as? UIFont)?.fontDescriptor.symbolicTraits ?? []
+                var font = bodyFont
+                if !traits.isEmpty, let d = font.fontDescriptor.withSymbolicTraits(traits) {
+                    font = UIFont(descriptor: d, size: font.pointSize)
+                }
+                mutable.addAttribute(.font, value: font, range: sub)
+            }
+            let selection = textView.selectedRange
+            textView.attributedText = mutable
+            textView.selectedRange = selection
+        }
+
+        // The caret's typing attributes must also forget the old block styling.
+        var attrs = textView.typingAttributes
+        for key in [NSAttributedString.Key.rteBlockTag, .rteListType, .rteListDepth,
+                    .rteIndentLevel, .rteAlign, .rteChecked] {
+            attrs.removeValue(forKey: key)
+        }
+        attrs[.paragraphStyle] = bodyStyle
+        let traits = (attrs[.font] as? UIFont)?.fontDescriptor.symbolicTraits ?? []
+        var font = bodyFont
+        if !traits.isEmpty, let d = font.fontDescriptor.withSymbolicTraits(traits) {
+            font = UIFont(descriptor: d, size: font.pointSize)
+        }
+        attrs[.font] = font
+        textView.typingAttributes = attrs
     }
 
     public func textViewDidChangeSelection(_ textView: UITextView) {
@@ -479,11 +551,28 @@ public final class RichTextEditorViewImpl: NSObject, UITextViewDelegate {
         if range.length > 0 {
             lastSelection = range
         }
+        // Report the caret's paragraph so a toolbar can reflect the real block type / alignment.
+        var blockTag = "p"
+        var align = ""
+        var listType = ""
+        if let text = textView.attributedText, text.length > 0 {
+            let nsText = text.string as NSString
+            let caret = min(range.location, nsText.length)
+            let paragraph = nsText.paragraphRange(for: NSRange(location: caret, length: 0))
+            if paragraph.length > 0, paragraph.location < text.length {
+                blockTag = text.attribute(.rteBlockTag, at: paragraph.location, effectiveRange: nil) as? String ?? "p"
+                align = text.attribute(.rteAlign, at: paragraph.location, effectiveRange: nil) as? String ?? ""
+                listType = text.attribute(.rteListType, at: paragraph.location, effectiveRange: nil) as? String ?? ""
+            }
+        }
         onSelectionChangeBlock?(
             currentBlockId(for: range),
             range.location,
             range.location + range.length,
-            activeInlineStyles(at: range)
+            activeInlineStyles(at: range),
+            blockTag,
+            align,
+            listType
         )
     }
 
