@@ -88,6 +88,10 @@ class RichTextEditorView(context: Context) : AppCompatEditText(context) {
       }
       override fun afterTextChanged(s: Editable?) {
         if (!initialized || suppressEvents) return
+        // Any edit shifts offsets, so a previously remembered highlight range is now stale and
+        // must not be re-applied to the wrong text by a later color/size/link command.
+        lastSelStart = 0
+        lastSelEnd = 0
         applyPendingStyles()
         normalizeBlockSpans()
         stripCollapsedBlockSpans()
@@ -125,14 +129,27 @@ class RichTextEditorView(context: Context) : AppCompatEditText(context) {
    */
   private fun stripCollapsedBlockSpans() {
     val editable = text ?: return
-    for (span in editable.getSpans(0, editable.length, Any::class.java)) {
-      when (span) {
-        is ListMarkerSpan, is BlockTagSpan, is LeadingMarginSpan, is AlignmentSpan,
-        is HeadingSizeSpan, is TypefaceSpan -> {
-          if (editable.getSpanStart(span) == editable.getSpanEnd(span)) {
-            editable.removeSpan(span)
-          }
-        }
+    val len = editable.length
+    // Collapsed spans we have already kept, keyed by (span class, position): only one of each
+    // kind may survive at a given point, otherwise a Select-All + Delete leaves a stack of
+    // markers ("• • 1. 2.") all painting on the single empty line.
+    val kept = HashSet<Pair<Class<*>, Int>>()
+    val all = editable.getSpans(0, len, Any::class.java)
+    // Walk newest-first so the most recently applied span of each kind is the one that survives.
+    for (span in all.reversed()) {
+      val isBlockSpan = span is ListMarkerSpan || span is BlockTagSpan || span is LeadingMarginSpan ||
+        span is AlignmentSpan || span is HeadingSizeSpan || span is TypefaceSpan
+      if (!isBlockSpan) continue
+      val start = editable.getSpanStart(span)
+      if (start < 0 || start != editable.getSpanEnd(span)) continue
+      // A collapsed span is only meaningful on a genuinely empty paragraph (an empty list item or
+      // empty heading line). Anywhere else — e.g. left behind mid-text when a multi-paragraph
+      // range was deleted — it would paint a stray marker into the surrounding paragraph.
+      val paragraphStartsHere = start == 0 || editable[start - 1] == '\n'
+      val paragraphEndsHere = start == len || editable[start] == '\n'
+      val onEmptyParagraph = paragraphStartsHere && paragraphEndsHere
+      if (!onEmptyParagraph || !kept.add(span.javaClass to start)) {
+        editable.removeSpan(span)
       }
     }
   }
@@ -177,6 +194,12 @@ class RichTextEditorView(context: Context) : AppCompatEditText(context) {
     }
     val density = resources.displayMetrics.density
     setText(SpanApplier.spannableForDocument(json, density))
+    // The spannable is built by appending blocks one after another with INCLUSIVE_INCLUSIVE block
+    // spans, so each span can stretch over the paragraphs appended after it. Clip them now,
+    // exactly as is done after an edit, so a loaded heading/list can't bleed onto its neighbours.
+    normalizeBlockSpans()
+    lastSelStart = 0
+    lastSelEnd = 0
     suppressEvents = false
     post { reportContentHeight() }
   }
@@ -226,21 +249,21 @@ class RichTextEditorView(context: Context) : AppCompatEditText(context) {
   fun setBlockType(tag: String) {
     val editable = text ?: return
     val (start, end) = currentParagraphRange(editable, toolbarCaret())
-    val e = editable.getSpans(start, end, BlockTagSpan::class.java).firstOrNull()
+    val e = blockSpanAt(editable, start, end)
     restyleParagraph(start, end, tag, e?.listType, e?.indentLevel ?: 0, e?.align, e?.listIndex ?: 0, e?.checked ?: false)
   }
 
   fun setAlignment(align: String) {
     val editable = text ?: return
     val (start, end) = currentParagraphRange(editable, toolbarCaret())
-    val e = editable.getSpans(start, end, BlockTagSpan::class.java).firstOrNull()
+    val e = blockSpanAt(editable, start, end)
     restyleParagraph(start, end, e?.tag ?: "p", e?.listType, e?.indentLevel ?: 0, align, e?.listIndex ?: 0, e?.checked ?: false)
   }
 
   fun toggleList(listType: String) {
     val editable = text ?: return
     val (start, end) = currentParagraphRange(editable, toolbarCaret())
-    val e = editable.getSpans(start, end, BlockTagSpan::class.java).firstOrNull()
+    val e = blockSpanAt(editable, start, end)
     // Tapping the active list type again turns the list off.
     val newType = if (e?.listType == listType) null else listType
     restyleParagraph(start, end, e?.tag ?: "p", newType, e?.indentLevel ?: 0, e?.align, 0, false)
@@ -374,7 +397,7 @@ class RichTextEditorView(context: Context) : AppCompatEditText(context) {
   fun adjustIndent(delta: Int) {
     val editable = text ?: return
     val (start, end) = currentParagraphRange(editable, toolbarCaret())
-    val e = editable.getSpans(start, end, BlockTagSpan::class.java).firstOrNull()
+    val e = blockSpanAt(editable, start, end)
     val newIndent = ((e?.indentLevel ?: 0) + delta).coerceIn(0, 8)
     restyleParagraph(start, end, e?.tag ?: "p", e?.listType, newIndent, e?.align, e?.listIndex ?: 0, e?.checked ?: false)
   }
@@ -399,10 +422,14 @@ class RichTextEditorView(context: Context) : AppCompatEditText(context) {
   ) {
     val editable = text ?: return
     suppressEvents = true
+    // A TypefaceSpan is only block-level when the paragraph *was* a code/pre block; otherwise it is
+    // inline <code> formatting the user applied, and changing the heading must not wipe it.
+    val wasCodeBlock = blockSpanAt(editable, start, end)?.tag.let { it == "pre" || it == "code" }
     for (span in editable.getSpans(start, end, Any::class.java)) {
       when (span) {
-        is HeadingSizeSpan, is TypefaceSpan, is LeadingMarginSpan, is AlignmentSpan, is BlockTagSpan ->
+        is HeadingSizeSpan, is LeadingMarginSpan, is AlignmentSpan, is BlockTagSpan ->
           editable.removeSpan(span)
+        is TypefaceSpan -> if (wasCodeBlock) editable.removeSpan(span)
       }
     }
     SpanApplier.styleBlock(
@@ -412,6 +439,19 @@ class RichTextEditorView(context: Context) : AppCompatEditText(context) {
     suppressEvents = false
     emitDocumentChange()
     notifySelectionChange(selectionStart, selectionEnd)
+  }
+
+  /**
+   * The block span that belongs to the paragraph `[start, end]` — the one that *starts* in it.
+   * Works for empty paragraphs too, where the span is a zero-length point at `start`.
+   */
+  private fun blockSpanAt(editable: Editable, start: Int, end: Int): BlockTagSpan? {
+    val candidates = editable.getSpans(start, end, BlockTagSpan::class.java)
+    return if (end > start) {
+      candidates.firstOrNull { editable.getSpanStart(it) in start until end }
+    } else {
+      candidates.lastOrNull { editable.getSpanStart(it) == start }
+    }
   }
 
   private fun currentParagraphRange(editable: Editable, cursor: Int): Pair<Int, Int> {
@@ -452,14 +492,20 @@ class RichTextEditorView(context: Context) : AppCompatEditText(context) {
         val leftZone = paddingLeft + 32 * resources.displayMetrics.density
         if (event.x < leftZone) {
           val (start, end) = currentParagraphRange(editable, offset)
-          val block = editable.getSpans(start, end, BlockTagSpan::class.java).firstOrNull()
+          val block = blockSpanAt(editable, start, end)
           if (block != null && block.listType == "check") {
             restyleParagraph(start, end, block.tag, "check", block.indentLevel, block.align, 0, !block.checked)
           }
         }
       }
     }
-    return super.onTouchEvent(event)
+    val handled = super.onTouchEvent(event)
+    if (event.action == MotionEvent.ACTION_UP && selectionStart == selectionEnd) {
+      // The user tapped to place a plain caret: any earlier highlight is no longer the target.
+      lastSelStart = 0
+      lastSelEnd = 0
+    }
+    return handled
   }
 
   override fun onSelectionChanged(selStart: Int, selEnd: Int) {
@@ -540,14 +586,10 @@ class RichTextEditorView(context: Context) : AppCompatEditText(context) {
     val editable = text
     if (editable != null) {
       val (ps, pe) = currentParagraphRange(editable, start.coerceIn(0, editable.length))
-      if (pe > ps) {
-        editable.getSpans(ps, pe, BlockTagSpan::class.java)
-          .firstOrNull { editable.getSpanStart(it) in ps until pe }
-          ?.let {
-            blockTag = it.tag
-            align = it.align ?: ""
-            listType = it.listType ?: ""
-          }
+      blockSpanAt(editable, ps, pe)?.let {
+        blockTag = it.tag
+        align = it.align ?: ""
+        listType = it.listType ?: ""
       }
     }
     onSelectionChangeListener?.invoke(
@@ -601,19 +643,17 @@ class RichTextEditorView(context: Context) : AppCompatEditText(context) {
     var indentLevel = 0
     var align: String? = null
     var checked = false
-    if (end > start) {
-      // Only honor a block span that actually starts inside this paragraph. A span that leaked
-      // in from the paragraph above (its start is < this paragraph's start) must not relabel
-      // this line — that was the "heading carries onto the next line" bug.
-      editable.getSpans(start, end, BlockTagSpan::class.java)
-        .firstOrNull { editable.getSpanStart(it) in start until end }
-        ?.let {
-          tag = it.tag
-          listType = it.listType
-          indentLevel = it.indentLevel
-          align = it.align
-          checked = it.checked
-        }
+    // Only honor a block span that actually starts inside this paragraph. A span that leaked in
+    // from the paragraph above (its start is < this paragraph's start) must not relabel this
+    // line — that was the "heading carries onto the next line" bug. For an EMPTY paragraph
+    // (start == end) the span is a zero-length point span sitting exactly at `start`, so the
+    // origin test is `== start` rather than a range check.
+    blockSpanAt(editable, start, end)?.let {
+      tag = it.tag
+      listType = it.listType
+      indentLevel = it.indentLevel
+      align = it.align
+      checked = it.checked
     }
 
     val block = JSONObject()

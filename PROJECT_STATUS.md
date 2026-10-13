@@ -181,6 +181,25 @@ also lets them **bleed across newlines**. Guards (all in `RichTextEditorView.kt`
   overrides cleanly instead of multiplying).
 - `background = null` on the EditText removes the Material underline between stacked segments.
 - `onFocusChanged` captures the caret before a toolbar popover steals focus (`toolbarCaret()`/`lastCaret`).
+- **Empty paragraphs are first-class.** `styleBlock` applies every block span even over a zero-length
+  range (INCLUSIVE_INCLUSIVE point spans), so choosing Heading/list/align on a blank line styles what
+  is typed next. `buildBlockJson`/`notifySelectionChange` read them via `blockSpanAt()` (span must
+  *start* in the paragraph; for an empty one, `== start`). `stripCollapsedBlockSpans()` keeps one
+  span per kind on a genuinely empty line and drops strays left mid-text by a multi-paragraph delete.
+- `lastSelStart/End` (the highlight remembered for focus-stealing popovers) is cleared on any text
+  edit and on a tap that lands a plain caret — otherwise a later color/size/link applies to the
+  *old* highlighted word.
+- `setDocument` runs `normalizeBlockSpans()` after `setText` (the spannable is built by appending
+  blocks, so block spans stretch over later paragraphs until clipped).
+- `restyleParagraph` only removes `TypefaceSpan` when the paragraph *was* a code/pre block; otherwise
+  it is inline `<code>` the user applied.
+
+### iOS equivalents
+- Heading fonts are bold. `inlineTraits(of:oldTag:)` subtracts the old block's base traits so
+  Heading → Normal doesn't stay bold, and `styleRun` ignores bold that only comes from the heading
+  base font (otherwise every heading serialized as `<h1><strong>…`).
+- Block styling normally lives on the paragraph's characters; for an **empty** line it rides on
+  `typingAttributes` (`updateEmptyParagraph`). Enter resets block attributes (`resetBlockAttributesAtCaret`).
 
 ---
 
@@ -206,6 +225,10 @@ also lets them **bleed across newlines**. Guards (all in `RichTextEditorView.kt`
   `roundtrip` (`roundtrip.test.ts` validates every toolbar option's HTML round-trip end to end).
 - `npx tsc --noEmit` must be clean.
 - Run from `packages/rich-text-editor`: `npx tsc --noEmit && npx jest`.
+- **Fresh container?** `node_modules` is empty and a plain `npm install` fails because the
+  `prepare` script (`bob build`) crashes on the codegen config. Install like CI does:
+  `npm pkg delete scripts.prepare && npm install --ignore-scripts`, then
+  `git checkout -- packages/rich-text-editor/package.json` and delete the stray root `package-lock.json`.
 
 ---
 

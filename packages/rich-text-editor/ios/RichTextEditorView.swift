@@ -109,6 +109,13 @@ public final class RichTextEditorViewImpl: NSObject, UITextViewDelegate {
     @objc public func setBlockType(_ tag: String) {
         guard let current = textView.attributedText else { return }
         let paragraphRange = (current.string as NSString).paragraphRange(for: textView.selectedRange)
+        if paragraphRange.length == 0 {
+            // Empty line: there are no characters to restyle, so the block type rides on the typing
+            // attributes and applies to whatever is typed next.
+            updateEmptyParagraph { $0.tag = tag }
+            notifySelectionChange()
+            return
+        }
         let mutable = NSMutableAttributedString(attributedString: current)
         applyBlockStyle(tag: tag, to: mutable, range: paragraphRange)
         let selection = textView.selectedRange
@@ -118,11 +125,77 @@ public final class RichTextEditorViewImpl: NSObject, UITextViewDelegate {
         notifySelectionChange()
     }
 
+    // MARK: - Font helpers
+
+    /// A heading's base font is already bold, so that bold is part of the *block*, not an inline
+    /// style the user applied. Strip the old block's own traits so they don't leak into the new one
+    /// (Heading → Normal must not stay bold) or get serialized as a spurious <strong>.
+    private func inlineTraits(of font: UIFont?, oldTag: String?) -> UIFontDescriptor.SymbolicTraits {
+        var traits = font?.fontDescriptor.symbolicTraits ?? []
+        if let oldTag {
+            traits.subtract(SpanApplier.font(forTag: oldTag).fontDescriptor.symbolicTraits)
+        }
+        return traits
+    }
+
+    private func makeFont(tag: String, inline traits: UIFontDescriptor.SymbolicTraits) -> UIFont {
+        var font = SpanApplier.font(forTag: tag)
+        if !traits.isEmpty, let d = font.fontDescriptor.withSymbolicTraits(font.fontDescriptor.symbolicTraits.union(traits)) {
+            font = UIFont(descriptor: d, size: font.pointSize)
+        }
+        return font
+    }
+
+    // MARK: - Empty paragraph (typing-attribute) styling
+
+    private struct EmptyBlockState {
+        var tag: String
+        var listType: String?
+        var indent: Int
+        var align: String?
+        var checked: Bool?
+    }
+
+    /// Style the paragraph the caret sits on when it has no characters yet. Block styling normally
+    /// lives on the paragraph's characters; for an empty line it has to live on `typingAttributes`
+    /// so the text typed next picks it up. Without this, choosing Heading / list / alignment /
+    /// indent on a blank line silently did nothing.
+    private func updateEmptyParagraph(_ mutate: (inout EmptyBlockState) -> Void) {
+        var attrs = textView.typingAttributes
+        let oldTag = attrs[.rteBlockTag] as? String
+        var state = EmptyBlockState(
+            tag: oldTag ?? "p",
+            listType: attrs[.rteListType] as? String,
+            indent: attrs[.rteIndentLevel] as? Int ?? 0,
+            align: attrs[.rteAlign] as? String,
+            checked: attrs[.rteChecked] as? Bool
+        )
+        mutate(&state)
+
+        let traits = inlineTraits(of: attrs[.font] as? UIFont, oldTag: oldTag)
+        attrs[.font] = makeFont(tag: state.tag, inline: traits)
+        attrs[.paragraphStyle] = SpanApplier.paragraphStyle(
+            forTag: state.tag, listType: state.listType, indentLevel: state.indent, align: state.align)
+        attrs[.rteBlockTag] = state.tag
+        if let listType = state.listType, listType != "none" {
+            attrs[.rteListType] = listType
+            attrs[.rteListDepth] = 0
+            if let checked = state.checked { attrs[.rteChecked] = checked } else { attrs.removeValue(forKey: .rteChecked) }
+        } else {
+            attrs.removeValue(forKey: .rteListType)
+            attrs.removeValue(forKey: .rteListDepth)
+            attrs.removeValue(forKey: .rteChecked)
+        }
+        if state.indent > 0 { attrs[.rteIndentLevel] = state.indent } else { attrs.removeValue(forKey: .rteIndentLevel) }
+        if let align = state.align, !align.isEmpty { attrs[.rteAlign] = align } else { attrs.removeValue(forKey: .rteAlign) }
+        textView.typingAttributes = attrs
+    }
+
     /// Re-style a paragraph for a new block tag, preserving inline traits (bold/italic) and the
     /// existing alignment while swapping the base font; stamp the tag so reconstruction recovers it.
     private func applyBlockStyle(tag: String, to string: NSMutableAttributedString, range: NSRange) {
         guard range.length > 0 else { return }
-        let baseFont = SpanApplier.font(forTag: tag)
+        let oldTag = string.attribute(.rteBlockTag, at: range.location, effectiveRange: nil) as? String
         let align = string.attribute(.rteAlign, at: range.location, effectiveRange: nil) as? String
         // Preserve the paragraph's list membership and indent — changing the block type must not
         // silently drop them (the stamped rteListType/rteIndentLevel attributes survive, so the
@@ -131,12 +204,8 @@ public final class RichTextEditorViewImpl: NSObject, UITextViewDelegate {
         let indent = string.attribute(.rteIndentLevel, at: range.location, effectiveRange: nil) as? Int
         let paragraph = SpanApplier.paragraphStyle(forTag: tag, listType: listType, indentLevel: indent, align: align)
         string.enumerateAttribute(.font, in: range) { value, sub, _ in
-            let traits = (value as? UIFont)?.fontDescriptor.symbolicTraits ?? []
-            var font = baseFont
-            if !traits.isEmpty, let descriptor = font.fontDescriptor.withSymbolicTraits(traits) {
-                font = UIFont(descriptor: descriptor, size: font.pointSize)
-            }
-            string.addAttribute(.font, value: font, range: sub)
+            let traits = self.inlineTraits(of: value as? UIFont, oldTag: oldTag)
+            string.addAttribute(.font, value: self.makeFont(tag: tag, inline: traits), range: sub)
         }
         string.addAttribute(.paragraphStyle, value: paragraph, range: range)
         string.addAttribute(.rteBlockTag, value: tag, range: range)
@@ -145,7 +214,11 @@ public final class RichTextEditorViewImpl: NSObject, UITextViewDelegate {
     @objc public func setAlignment(_ align: String) {
         guard let current = textView.attributedText else { return }
         let range = (current.string as NSString).paragraphRange(for: textView.selectedRange)
-        guard range.length > 0 else { return }
+        if range.length == 0 {
+            updateEmptyParagraph { $0.align = align }
+            notifySelectionChange()
+            return
+        }
         let mutable = NSMutableAttributedString(attributedString: current)
         let tag = mutable.attribute(.rteBlockTag, at: range.location, effectiveRange: nil) as? String ?? "p"
         let listType = mutable.attribute(.rteListType, at: range.location, effectiveRange: nil) as? String
@@ -191,7 +264,20 @@ public final class RichTextEditorViewImpl: NSObject, UITextViewDelegate {
     @objc public func toggleList(_ listType: String) {
         guard let current = textView.attributedText else { return }
         let range = (current.string as NSString).paragraphRange(for: textView.selectedRange)
-        guard range.length > 0 else { return }
+        if range.length == 0 {
+            updateEmptyParagraph { state in
+                // Tapping the active list type again turns the list off.
+                if state.listType == listType {
+                    state.listType = nil
+                    state.checked = nil
+                } else {
+                    state.listType = listType
+                    state.checked = listType == "check" ? false : nil
+                }
+            }
+            notifySelectionChange()
+            return
+        }
         let mutable = NSMutableAttributedString(attributedString: current)
         let currentType = mutable.attribute(.rteListType, at: range.location, effectiveRange: nil) as? String
         let newType: String? = currentType == listType ? nil : listType
@@ -287,7 +373,11 @@ public final class RichTextEditorViewImpl: NSObject, UITextViewDelegate {
     @objc public func adjustIndent(_ delta: Int) {
         guard let current = textView.attributedText else { return }
         let range = (current.string as NSString).paragraphRange(for: textView.selectedRange)
-        guard range.length > 0 else { return }
+        if range.length == 0 {
+            updateEmptyParagraph { $0.indent = max(0, min(8, $0.indent + delta)) }
+            notifySelectionChange()
+            return
+        }
         let mutable = NSMutableAttributedString(attributedString: current)
         let tag = mutable.attribute(.rteBlockTag, at: range.location, effectiveRange: nil) as? String ?? "p"
         let listType = mutable.attribute(.rteListType, at: range.location, effectiveRange: nil) as? String
@@ -364,8 +454,12 @@ public final class RichTextEditorViewImpl: NSObject, UITextViewDelegate {
         let caret = min(textView.selectedRange.location, nsText.length)
         let paragraph = nsText.paragraphRange(for: NSRange(location: caret, length: 0))
         let mutable = NSMutableAttributedString(attributedString: current)
-        let bodyFont = UIFont.systemFont(ofSize: SpanApplier.defaultFontSize)
         let bodyStyle = SpanApplier.paragraphStyle(forTag: "p", listType: nil, indentLevel: nil, align: nil)
+        // The block the new line was split off from; its own base-font traits (a heading's bold)
+        // must not follow the caret onto the fresh body paragraph.
+        let oldTag = (paragraph.length > 0
+            ? current.attribute(.rteBlockTag, at: paragraph.location, effectiveRange: nil) as? String
+            : nil) ?? textView.typingAttributes[.rteBlockTag] as? String
 
         if paragraph.length > 0 {
             for key in [NSAttributedString.Key.rteBlockTag, .rteListType, .rteListDepth,
@@ -375,12 +469,8 @@ public final class RichTextEditorViewImpl: NSObject, UITextViewDelegate {
             mutable.addAttribute(.paragraphStyle, value: bodyStyle, range: paragraph)
             // Keep inline traits (bold/italic) but drop the heading's larger base size.
             mutable.enumerateAttribute(.font, in: paragraph) { value, sub, _ in
-                let traits = (value as? UIFont)?.fontDescriptor.symbolicTraits ?? []
-                var font = bodyFont
-                if !traits.isEmpty, let d = font.fontDescriptor.withSymbolicTraits(traits) {
-                    font = UIFont(descriptor: d, size: font.pointSize)
-                }
-                mutable.addAttribute(.font, value: font, range: sub)
+                let traits = self.inlineTraits(of: value as? UIFont, oldTag: oldTag)
+                mutable.addAttribute(.font, value: self.makeFont(tag: "p", inline: traits), range: sub)
             }
             let selection = textView.selectedRange
             textView.attributedText = mutable
@@ -394,12 +484,8 @@ public final class RichTextEditorViewImpl: NSObject, UITextViewDelegate {
             attrs.removeValue(forKey: key)
         }
         attrs[.paragraphStyle] = bodyStyle
-        let traits = (attrs[.font] as? UIFont)?.fontDescriptor.symbolicTraits ?? []
-        var font = bodyFont
-        if !traits.isEmpty, let d = font.fontDescriptor.withSymbolicTraits(traits) {
-            font = UIFont(descriptor: d, size: font.pointSize)
-        }
-        attrs[.font] = font
+        let traits = inlineTraits(of: attrs[.font] as? UIFont, oldTag: oldTag)
+        attrs[.font] = makeFont(tag: "p", inline: traits)
         textView.typingAttributes = attrs
     }
 
@@ -482,7 +568,10 @@ public final class RichTextEditorViewImpl: NSObject, UITextViewDelegate {
             align = attributed.attribute(.rteAlign, at: range.location, effectiveRange: nil) as? String
             checked = attributed.attribute(.rteChecked, at: range.location, effectiveRange: nil) as? Bool
 
-            let baseFontSize = SpanApplier.font(forTag: blockTag).pointSize
+            let baseFont = SpanApplier.font(forTag: blockTag)
+            let baseFontSize = baseFont.pointSize
+            // Headings are bold by definition; that bold belongs to the block, not to the text.
+            let baseIsBold = baseFont.fontDescriptor.symbolicTraits.contains(.traitBold)
             attributed.enumerateAttributes(in: range) { attrs, r, _ in
                 let rel = NSRange(location: r.location - range.location, length: r.length)
                 if let attachment = attrs[.attachment] as? EmbedTextAttachment {
@@ -491,7 +580,7 @@ public final class RichTextEditorViewImpl: NSObject, UITextViewDelegate {
                     embeds.append(embed)
                     return
                 }
-                guard let run = styleRun(from: attrs, range: rel, baseFontSize: baseFontSize) else { return }
+                guard let run = styleRun(from: attrs, range: rel, baseFontSize: baseFontSize, baseIsBold: baseIsBold) else { return }
                 if var last = runs.last, last.start + last.length == run.start, sameStyle(last, run) {
                     last.length += run.length
                     runs[runs.count - 1] = last
@@ -509,12 +598,12 @@ public final class RichTextEditorViewImpl: NSObject, UITextViewDelegate {
         )
     }
 
-    private func styleRun(from attrs: [NSAttributedString.Key: Any], range: NSRange, baseFontSize: CGFloat) -> StyleRun? {
+    private func styleRun(from attrs: [NSAttributedString.Key: Any], range: NSRange, baseFontSize: CGFloat, baseIsBold: Bool) -> StyleRun? {
         var run = StyleRun(start: range.location, length: range.length, tag: "span")
         var styled = false
         if let font = attrs[.font] as? UIFont {
             let traits = font.fontDescriptor.symbolicTraits
-            if traits.contains(.traitBold) { run.bold = true; styled = true }
+            if traits.contains(.traitBold) && !baseIsBold { run.bold = true; styled = true }
             if traits.contains(.traitItalic) { run.italic = true; styled = true }
             // Emit an explicit size only when it differs from the block's base font (so plain
             // heading text isn't tagged with a redundant size).

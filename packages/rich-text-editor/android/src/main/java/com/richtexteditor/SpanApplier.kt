@@ -83,6 +83,10 @@ object SpanApplier {
    * Apply block-level styling (heading size, code font, indent) plus a BlockTagSpan marker over
    * `[start, end]`. Reusable by both initial rendering and the view's setBlockType. Headings use
    * only a size span (no bold) so inline bold is never clobbered when the block type changes.
+   *
+   * All spans are applied even over an EMPTY range (`start == end`): they are INCLUSIVE_INCLUSIVE
+   * point spans, so text typed afterwards on that empty line picks them up. Skipping them (as an
+   * earlier version did) left the line tagged `h1` but rendered at body size.
    */
   fun styleBlock(
     builder: Spannable,
@@ -109,19 +113,19 @@ object SpanApplier {
       "h6" -> 16f
       else -> null
     }
-    if (headingSp != null && end > start) {
+    if (headingSp != null) {
       builder.setSpan(HeadingSizeSpan((headingSp * density).toInt()), start, end, Spanned.SPAN_INCLUSIVE_INCLUSIVE)
     }
-    if ((tag == "pre" || tag == "code") && end > start) {
+    if (tag == "pre" || tag == "code") {
       builder.setSpan(TypefaceSpan("monospace"), start, end, Spanned.SPAN_INCLUSIVE_INCLUSIVE)
     }
     val blockIndent = indentLevel + (if (tag == "blockquote") 1 else 0)
-    if (blockIndent > 0 && end > start) {
+    if (blockIndent > 0) {
       val marginPx = (blockIndent * 20 * density).toInt()
       builder.setSpan(LeadingMarginSpan.Standard(marginPx), start, end, Spanned.SPAN_INCLUSIVE_INCLUSIVE)
     }
     // List marker (bullet / number / checkbox) reserves its own leading margin and draws itself.
-    if (listType != null && listType != "none" && end > start) {
+    if (listType != null && listType != "none") {
       val gap = (28 * density).toInt()
       builder.setSpan(
         ListMarkerSpan(listType, listIndex, checked, gap),
@@ -136,7 +140,7 @@ object SpanApplier {
       "right" -> Layout.Alignment.ALIGN_OPPOSITE
       else -> null
     }
-    if (alignment != null && end > start) {
+    if (alignment != null) {
       builder.setSpan(AlignmentSpan.Standard(alignment), start, end, Spanned.SPAN_INCLUSIVE_INCLUSIVE)
     }
     builder.setSpan(
